@@ -63,6 +63,16 @@ public class JwtTokenProvider {
         parseClaims(token);
     }
 
+    // 블랙리스트 TTL 계산용: Access Token의 남은 만료 시간(ms) 반환
+    public long getRemainingExpiration(String token) {
+        try {
+            Date expiration = parseClaims(token).getExpiration();
+            return expiration.getTime() - System.currentTimeMillis();
+        } catch (TokenExpiredException e) {
+            return 0;
+        }
+    }
+
     private Claims parseClaims(String token) {
         try {
             return Jwts.parserBuilder()

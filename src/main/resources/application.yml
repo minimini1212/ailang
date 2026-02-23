@@ -29,8 +29,15 @@ spring:
     username: ${GOOGLE_EMAIL}
     password: ${GOOGLE_EMAIL_SECRET_KEY}
     properties:
-      "[mail.smtp.auth]": "true"
-      "[mail.smtp.starttls.enable]": "true"
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
 
   security:
     oauth2:
@@ -39,16 +46,19 @@ spring:
           google:
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_SECRET_KEY}
-            scope: [ email, profile ]
-            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            scope: email, profile
+            redirect-uri: "http://localhost:8080/login/oauth2/code/google"
+        provider:
+          google:
+            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth?prompt=select_account #매번 계정 선택 화면 표시
 
 jwt:
   secret: ${JWT_SECRET}
-  access-expiration: 1800000
+  access-expiration: 3600000
   refresh-expiration: 604800000
 
 app:
   oauth2:
-    redirect-uri: http://localhost:3000/oauth2/callback
+    redirect-uri: http://localhost:5173/oauth2/callback
   mail:
     verification-code-ttl: 300

@@ -49,6 +49,9 @@ public class CookieUtil {
 
         if ("prod".equals(activeProfile)) {
             builder.sameSite("None").secure(true);
+        } else {
+            // 로컬 환경 CSRF 방어: 크로스 사이트 POST 요청 시 쿠키 전송 차단
+            builder.sameSite("Lax");
         }
 
         response.addHeader("Set-Cookie", builder.build().toString());
