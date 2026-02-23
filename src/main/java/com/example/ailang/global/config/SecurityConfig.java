@@ -1,6 +1,7 @@
 package com.example.ailang.global.config;
 
 import com.example.ailang.global.jwt.JwtTokenProvider;
+import com.example.ailang.global.redis.RedisService;
 import com.example.ailang.global.security.filter.JwtAuthenticationFilter;
 import com.example.ailang.global.security.handler.CustomAccessDeniedHandler;
 import com.example.ailang.global.security.handler.CustomAuthenticationEntryPoint;
@@ -30,6 +31,8 @@ public class SecurityConfig {
     private final JwtTokenProvider jwtTokenProvider;
     private final CustomUserDetailsService customUserDetailsService;
     private final CookieUtil cookieUtil;
+    // 블랙리스트 체크를 위해 JwtAuthenticationFilter에 전달
+    private final RedisService redisService;
     private final CustomAuthenticationEntryPoint customAuthenticationEntryPoint;
     private final CustomAccessDeniedHandler customAccessDeniedHandler;
     private final CustomOAuth2UserService customOAuth2UserService;
@@ -62,7 +65,8 @@ public class SecurityConfig {
 
     @Bean
     public JwtAuthenticationFilter jwtAuthenticationFilter() {
-        return new JwtAuthenticationFilter(jwtTokenProvider, customUserDetailsService, cookieUtil);
+        // RedisService 추가: 블랙리스트 토큰 검증에 사용
+        return new JwtAuthenticationFilter(jwtTokenProvider, customUserDetailsService, cookieUtil, redisService);
     }
 
     @Bean

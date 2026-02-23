@@ -40,6 +40,8 @@ public class AuthServiceImpl implements AuthService {
 
     private static final String VERIFIED_KEY_PREFIX = "email:verified:";
     private static final String REFRESH_KEY_PREFIX = "refresh:token:";
+    // 로그아웃된 Access Token을 만료 전까지 차단하기 위한 블랙리스트 키 접두사
+    private static final String BLACKLIST_KEY_PREFIX = "blacklist:access:";
 
     @Override
     @Transactional
@@ -104,6 +106,12 @@ public class AuthServiceImpl implements AuthService {
             try {
                 String email = jwtTokenProvider.getEmailIgnoreExpiry(accessToken);
                 redisService.delete(REFRESH_KEY_PREFIX + email);
+
+                // Access Token 블랙리스트 등록: 남은 만료 시간만큼 Redis에 유지 후 자동 삭제
+                long remaining = jwtTokenProvider.getRemainingExpiration(accessToken);
+                if (remaining > 0) {
+                    redisService.save(BLACKLIST_KEY_PREFIX + accessToken, "logout", Duration.ofMillis(remaining));
+                }
             } catch (Exception ignored) {}
         }
 

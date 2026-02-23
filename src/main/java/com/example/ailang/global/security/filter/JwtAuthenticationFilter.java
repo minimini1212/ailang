@@ -3,6 +3,7 @@ package com.example.ailang.global.security.filter;
 import com.example.ailang.global.exception.TokenExpiredException;
 import com.example.ailang.global.exception.TokenInvalidException;
 import com.example.ailang.global.jwt.JwtTokenProvider;
+import com.example.ailang.global.redis.RedisService;
 import com.example.ailang.global.security.userdetails.CustomUserDetails;
 import com.example.ailang.global.security.userdetails.CustomUserDetailsService;
 import com.example.ailang.global.security.util.CookieUtil;
@@ -25,6 +26,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenProvider jwtTokenProvider;
     private final CustomUserDetailsService customUserDetailsService;
     private final CookieUtil cookieUtil;
+    private final RedisService redisService;
+
+    // 블랙리스트 키 접두사 (AuthServiceImpl과 동일하게 유지)
+    private static final String BLACKLIST_KEY_PREFIX = "blacklist:access:";
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -35,6 +40,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (token != null) {
             try {
                 jwtTokenProvider.validateToken(token);
+
+                // 로그아웃된 토큰인지 블랙리스트 확인
+                if (redisService.hasKey(BLACKLIST_KEY_PREFIX + token)) {
+                    CustomResponseUtil.fail(response, "로그아웃된 토큰입니다.", HttpStatus.UNAUTHORIZED);
+                    return;
+                }
+
                 String email = jwtTokenProvider.getEmail(token);
                 CustomUserDetails userDetails = (CustomUserDetails) customUserDetailsService.loadUserByUsername(email);
                 UsernamePasswordAuthenticationToken auth =
