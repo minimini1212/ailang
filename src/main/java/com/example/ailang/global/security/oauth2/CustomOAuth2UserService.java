@@ -33,7 +33,9 @@ public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
 
         User user = userRepository.findByEmail(userInfo.getEmail())
             .map(existing -> {
-                existing.updateOAuthInfo(AuthProvider.GOOGLE, userInfo.getProviderId(), userInfo.getProfileImageUrl());
+                if (existing.getProvider() == AuthProvider.LOCAL) {
+                    throw new OAuth2AuthenticationException("이미 이메일로 가입된 계정입니다. 이메일 로그인을 이용해주세요.");
+                }
                 return existing;
             })
             .orElseGet(() -> userRepository.save(User.builder()
