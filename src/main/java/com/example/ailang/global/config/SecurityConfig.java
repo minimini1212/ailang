@@ -5,6 +5,7 @@ import com.example.ailang.global.redis.RedisService;
 import com.example.ailang.global.security.filter.JwtAuthenticationFilter;
 import com.example.ailang.global.security.handler.CustomAccessDeniedHandler;
 import com.example.ailang.global.security.handler.CustomAuthenticationEntryPoint;
+import com.example.ailang.global.security.handler.OAuth2FailureHandler;
 import com.example.ailang.global.security.handler.OAuth2SuccessHandler;
 import com.example.ailang.global.security.oauth2.CustomOAuth2UserService;
 import com.example.ailang.global.security.userdetails.CustomUserDetailsService;
@@ -37,6 +38,7 @@ public class SecurityConfig {
     private final CustomAccessDeniedHandler customAccessDeniedHandler;
     private final CustomOAuth2UserService customOAuth2UserService;
     private final OAuth2SuccessHandler oAuth2SuccessHandler;
+    private final OAuth2FailureHandler oAuth2FailureHandler;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -53,6 +55,7 @@ public class SecurityConfig {
             .oauth2Login(oauth2 -> oauth2
                 .userInfoEndpoint(userInfo -> userInfo.userService(customOAuth2UserService))
                 .successHandler(oAuth2SuccessHandler)
+                .failureHandler(oAuth2FailureHandler)
             )
             .exceptionHandling(exception -> exception
                 .authenticationEntryPoint(customAuthenticationEntryPoint)

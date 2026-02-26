@@ -1,6 +1,7 @@
 package com.example.ailang.domain.user.entity;
 
 import com.example.ailang.domain.user.enums.AuthProvider;
+import com.example.ailang.domain.user.enums.Grade;
 import com.example.ailang.domain.user.enums.UserRole;
 import com.example.ailang.domain.user.enums.UserStatus;
 import com.example.ailang.global.entity.BaseTimeEntity;
@@ -47,9 +48,11 @@ public class User extends BaseTimeEntity {
     @Column(length = 500)
     private String profileImageUrl;
 
-    public void updateOAuthInfo(AuthProvider provider, String providerId, String profileImageUrl) {
-        this.provider = provider;
-        this.providerId = providerId;
-        this.profileImageUrl = profileImageUrl;
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private Grade grade;
+
+    public void updateGrade(Grade grade) {
+        this.grade = grade;
     }
 }

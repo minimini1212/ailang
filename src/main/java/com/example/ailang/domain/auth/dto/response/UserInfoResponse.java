@@ -2,6 +2,7 @@ package com.example.ailang.domain.auth.dto.response;
 
 import com.example.ailang.domain.user.entity.User;
 import com.example.ailang.domain.user.enums.AuthProvider;
+import com.example.ailang.domain.user.enums.Grade;
 import com.example.ailang.domain.user.enums.UserRole;
 import lombok.Builder;
 import lombok.Getter;
@@ -12,6 +13,7 @@ public class UserInfoResponse {
     private Long id;
     private String email;
     private String nickname;
+    private Grade grade;
     private String profileImageUrl;
     private AuthProvider provider;
     private UserRole role;
@@ -21,6 +23,7 @@ public class UserInfoResponse {
             .id(user.getId())
             .email(user.getEmail())
             .nickname(user.getNickname())
+            .grade(user.getGrade())
             .profileImageUrl(user.getProfileImageUrl())
             .provider(user.getProvider())
             .role(user.getRole())
