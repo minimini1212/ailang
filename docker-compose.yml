@@ -1,0 +1,47 @@
+services:
+  oracle:
+    image: gvenzl/oracle-free
+    container_name: oracle23ai
+    environment:
+      ORACLE_PASSWORD: oracle
+    ports:
+      - "1521:1521"
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+    networks:
+      - ailang-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: ailang-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - ailang-network
+    restart: unless-stopped
+
+  ai-server:
+    build:
+      context: ./ai-server
+      dockerfile: Dockerfile
+    container_name: ailang-ai-server
+    env_file:
+      - ./.env
+    ports:
+      - "8001:8000"
+    depends_on:
+      - redis
+    networks:
+      - ailang-network
+    restart: unless-stopped
+
+volumes:
+  oracle-data:
+  redis-data:
+
+networks:
+  ailang-network:
+    driver: bridge
