@@ -23,4 +23,13 @@ public class UserController {
         User user = userService.getUserByEmail(userDetails.getEmail());
         return ResponseEntity.ok(ResponseDTO.okWithData(UserInfoResponse.from(user)));
     }
+
+    // 진단 테스트 완료 처리
+    @PatchMapping("/me/assessment")
+    public ResponseEntity<ResponseDTO<Void>> completeAssessment(
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        User user = userService.getUserByEmail(userDetails.getEmail());
+        userService.completeAssessment(user.getId());
+        return ResponseEntity.ok(ResponseDTO.ok());
+    }
 }

@@ -4,4 +4,5 @@ import com.example.ailang.domain.user.entity.User;
 
 public interface UserService {
     User getUserByEmail(String email);
+    void completeAssessment(Long userId);
 }

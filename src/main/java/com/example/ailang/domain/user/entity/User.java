@@ -52,7 +52,15 @@ public class User extends BaseTimeEntity {
     @Column(length = 20)
     private Grade grade;
 
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean assessmentCompleted = false;
+
     public void updateGrade(Grade grade) {
         this.grade = grade;
+    }
+
+    public void completeAssessment() {
+        this.assessmentCompleted = true;
     }
 }

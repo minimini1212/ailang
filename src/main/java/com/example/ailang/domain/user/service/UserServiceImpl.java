@@ -18,4 +18,11 @@ public class UserServiceImpl implements UserService {
     public User getUserByEmail(String email) {
         return userRepository.findByEmail(email).orElseThrow(UserNotFoundException::new);
     }
+
+    @Override
+    @Transactional
+    public void completeAssessment(Long userId) {
+        User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+        user.completeAssessment();
+    }
 }
