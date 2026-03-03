@@ -23,6 +23,9 @@ public enum ErrorCode {
     REFRESH_TOKEN_NOT_FOUND(HttpStatus.NOT_FOUND, "리프레시 토큰을 찾을 수 없습니다."),
     REFRESH_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "리프레시 토큰이 만료되었습니다."),
 
+    CHAPTER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 챕터입니다."),
+    PROBLEM_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 조건에 맞는 문제가 없습니다."),
+
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 에러");
 
     private final HttpStatus status;

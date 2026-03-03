@@ -52,6 +52,16 @@ spring:
           google:
             authorization-uri: https://accounts.google.com/o/oauth2/v2/auth?prompt=select_account #매번 계정 선택 화면 표시
 
+ai:
+  server:
+    url: ${AI_SERVER_URL:http://localhost:8001}
+
+data:
+  loader:
+    enabled: true   # 문제 데이터가 이미 있으면 자동으로 건너뜀 (중복 적재 없음)
+    problem-dir: C:/Users/USER/OneDrive/Desktop/project/ailang/jsonFile/problem/1st-grade
+    answer-dir: C:/Users/USER/OneDrive/Desktop/project/ailang/jsonFile/answer/1st-grade
+
 jwt:
   secret: ${JWT_SECRET}
   access-expiration: 3600000

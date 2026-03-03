@@ -1,13 +1,15 @@
 import redis.asyncio as aioredis
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, AIMessage
+from google.api_core.exceptions import ResourceExhausted
 from app.config import settings
+from app.exceptions import GeminiQuotaException
 
 
 class RagService:
     def __init__(self):
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash",
+            model="gemini-2.5-flash",
             google_api_key=settings.gemini_api_key,
         )
         self.redis = aioredis.Redis(
@@ -36,7 +38,10 @@ class RagService:
         messages = history + [HumanMessage(content=question)]
 
         # TODO: RAG 검색 결과를 system prompt에 추가 예정
-        response = await self.llm.ainvoke(messages)
+        try:
+            response = await self.llm.ainvoke(messages)
+        except ResourceExhausted:
+            raise GeminiQuotaException()
         answer = response.content
 
         await self._save_history(session_id, question, answer)
