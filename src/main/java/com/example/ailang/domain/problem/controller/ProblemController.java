@@ -1,6 +1,7 @@
 package com.example.ailang.domain.problem.controller;
 
 import com.example.ailang.domain.problem.dto.request.SubmitAnswerRequest;
+import com.example.ailang.domain.problem.dto.response.AnswerRevealResponse;
 import com.example.ailang.domain.problem.dto.response.ConceptResponse;
 import com.example.ailang.domain.problem.dto.response.ProblemResponse;
 import com.example.ailang.domain.problem.dto.response.SubmitAnswerResponse;
@@ -89,6 +90,14 @@ public class ProblemController {
         User user = userService.getUserByEmail(userDetails.getEmail());
         return ResponseEntity.ok(ResponseDTO.okWithData(
                 problemService.getRandomProblemByGrade(user.getId())));
+    }
+
+    // 단답형 정답 공개 (자가채점 전 확인용, 이력 저장 없음)
+    @GetMapping("/{problemId}/answer")
+    public ResponseEntity<ResponseDTO<AnswerRevealResponse>> revealAnswer(
+            @PathVariable Long problemId) {
+        return ResponseEntity.ok(ResponseDTO.okWithData(
+                problemService.revealAnswer(problemId)));
     }
 
     // AI 모의문제 조회: 현재 난이도 기반으로 Gemini가 생성한 새 문제 반환

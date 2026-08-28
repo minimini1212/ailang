@@ -1,6 +1,7 @@
 package com.example.ailang.domain.problem.service;
 
 import com.example.ailang.domain.problem.dto.request.SubmitAnswerRequest;
+import com.example.ailang.domain.problem.dto.response.AnswerRevealResponse;
 import com.example.ailang.domain.problem.dto.response.ConceptResponse;
 import com.example.ailang.domain.problem.dto.response.ProblemResponse;
 import com.example.ailang.domain.problem.dto.response.SubmitAnswerResponse;
@@ -32,4 +33,7 @@ public interface ProblemService {
 
     // 유저 수준 파악용 20문제 (LOW 7개 + MEDIUM 7개 + HIGH 6개)
     List<ProblemResponse> getAssessmentProblems(Long userId);
+
+    // 단답형 정답 공개 (자가채점용, 이력 저장 없음)
+    AnswerRevealResponse revealAnswer(Long problemId);
 }

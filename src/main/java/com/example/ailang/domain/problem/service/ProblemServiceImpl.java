@@ -4,6 +4,7 @@ import com.example.ailang.domain.chapter.entity.Chapter;
 import com.example.ailang.domain.chapter.exception.ChapterNotFoundException;
 import com.example.ailang.domain.chapter.repository.ChapterRepository;
 import com.example.ailang.domain.problem.dto.request.SubmitAnswerRequest;
+import com.example.ailang.domain.problem.dto.response.AnswerRevealResponse;
 import com.example.ailang.domain.problem.dto.response.ConceptResponse;
 import com.example.ailang.domain.problem.dto.response.ProblemResponse;
 import com.example.ailang.domain.problem.dto.response.SubmitAnswerResponse;
@@ -40,7 +41,7 @@ public class ProblemServiceImpl implements ProblemService {
     private final UserProblemHistoryRepository userProblemHistoryRepository;
     private final ChapterRepository chapterRepository;
     private final UserRepository userRepository;
-    private final AiServerClient aiServerClient;    // FastAPI 호출용
+    private final AiServerClient aiServerClient;    // j 호출용
 
     @Override
     // ---- 맞춤형 문제 조회 ----
@@ -84,11 +85,18 @@ public class ProblemServiceImpl implements ProblemService {
         Problem problem = problemRepository.findById(problemId).orElseThrow(ProblemNotFoundException::new);
         Chapter chapter = chapterRepository.findById(request.getChapterId()).orElseThrow(ChapterNotFoundException::new);
 
-        // 정답 여부 판단 (대소문자, 공백, LaTeX $ 기호 무시)
-        // 예: "$ 7 $" vs "7" → 둘 다 정답 처리
-        String normalizedCorrect = problem.getAnswer().replaceAll("[$\\s]", "");
-        String normalizedUser    = request.getUserAnswer().replaceAll("[$\\s]", "");
-        boolean isCorrect = normalizedCorrect.equalsIgnoreCase(normalizedUser);
+        // 정답 여부 판단
+        // - 객관식(MULTIPLE_CHOICE): 서버에서 자동 채점 (정규화 후 비교)
+        // - 단답형(SHORT_ANSWER): 유저 자가 채점 결과(selfJudge) 사용
+        boolean isCorrect;
+        if (problem.getProblemType() == ProblemType.SHORT_ANSWER) {
+            // 단답형: selfJudge 없으면 false 처리 (프론트에서 반드시 전달해야 함)
+            isCorrect = Boolean.TRUE.equals(request.getSelfJudge());
+        } else {
+            // 객관식: 정규화 후 자동 비교
+            isCorrect = normalizeAnswer(problem.getAnswer())
+                    .equalsIgnoreCase(normalizeAnswer(request.getUserAnswer()));
+        }
 
         // 풀이 이력 1건 저장 (USER_PROBLEM_HISTORY에 INSERT)
         userProblemHistoryRepository.save(UserProblemHistory.builder()
@@ -111,6 +119,41 @@ public class ProblemServiceImpl implements ProblemService {
         stats.recordAnswer(isCorrect);
 
         return SubmitAnswerResponse.of(isCorrect, problem.getAnswer(), problem.getExplanation(), stats);
+    }
+
+    @Override
+    // ---- 단답형 정답 공개 (자가채점용, 이력 저장 없음) ----
+    public AnswerRevealResponse revealAnswer(Long problemId) {
+        Problem problem = problemRepository.findById(problemId).orElseThrow(ProblemNotFoundException::new);
+        return AnswerRevealResponse.of(problem.getAnswer(), problem.getExplanation());
+    }
+
+    /**
+     * 정답 정규화: LaTeX 표기와 일반 표기 모두 허용
+     * - $ 제거, 공백 제거
+     * - \frac{a}{b} → a/b
+     * - ^{n} → ^n, _{n} → _n (중괄호 제거)
+     * - \times → ×, \div → ÷, \cdot → ·, \pm → ±
+     * - 나머지 LaTeX 명령어 제거 (\word)
+     * - 남은 중괄호 제거
+     */
+    private String normalizeAnswer(String answer) {
+        String s = answer;
+        s = s.replaceAll("\\$", "");                                          // $ 제거
+        s = s.replaceAll("\\s+", "");                                         // 공백 제거
+        // 원문자 → 숫자 변환 (DB 정답 "①" ↔ 유저 제출 "1" 매칭)
+        s = s.replace("①", "1").replace("②", "2").replace("③", "3")
+             .replace("④", "4").replace("⑤", "5");
+        s = s.replaceAll("\\\\frac\\{([^}]*)\\}\\{([^}]*)\\}", "$1/$2");      // \frac{a}{b} → a/b
+        s = s.replaceAll("\\^\\{([^}]+)\\}", "^$1");                          // ^{n} → ^n
+        s = s.replaceAll("_\\{([^}]+)\\}", "_$1");                            // _{n} → _n
+        s = s.replaceAll("\\\\times", "×");
+        s = s.replaceAll("\\\\div", "÷");
+        s = s.replaceAll("\\\\cdot", "·");
+        s = s.replaceAll("\\\\pm", "±");
+        s = s.replaceAll("\\\\[a-zA-Z]+", "");                               // 나머지 LaTeX 명령어 제거
+        s = s.replaceAll("[{}]", "");                                         // 중괄호 제거
+        return s;
     }
 
     @Override
