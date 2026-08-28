@@ -69,6 +69,14 @@ public class DataLoader implements CommandLineRunner {
             return;
         }
 
+        // 「경로를 설정 안 했다」와 「경로가 틀렸다」는 다른 문제이고, 사람이 할 일도 다르다.
+        // 둘을 같은 메시지로 뭉뚱그리면 원인을 못 찾는다 (docs/rules 의 「실패는 종류를 남긴다」).
+        if (problemDir == null || problemDir.isBlank() || answerDir == null || answerDir.isBlank()) {
+            log.warn("[DataLoader] 적재 경로가 설정되지 않았습니다. 문제 0건으로 기동합니다.");
+            log.warn("[DataLoader] .env 에 DATA_PROBLEM_DIR · DATA_ANSWER_DIR 을 채우세요 (.env.example ⑦ 참고).");
+            return;
+        }
+
         log.info("[DataLoader] 기출문제 적재 시작...");
         log.info("[DataLoader] 문제 경로: {}", problemDir);
         log.info("[DataLoader] 답안 경로: {}", answerDir);
