@@ -24,6 +24,7 @@ import com.example.ailang.domain.user.repository.UserRepository;
 import com.example.ailang.global.client.AiServerClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -41,7 +42,8 @@ public class ProblemServiceImpl implements ProblemService {
     private final UserProblemHistoryRepository userProblemHistoryRepository;
     private final ChapterRepository chapterRepository;
     private final UserRepository userRepository;
-    private final AiServerClient aiServerClient;    // j 호출용
+    private final AiServerClient aiServerClient;      // FastAPI 호출용
+    private final AiProblemStore aiProblemStore;      // AI 문제의 DB 작업 (트랜잭션 분리)
 
     @Override
     // ---- 맞춤형 문제 조회 ----
@@ -213,34 +215,26 @@ public class ProblemServiceImpl implements ProblemService {
     }
 
     @Override
-    @Transactional
     // ---- AI 모의문제 생성 (FastAPI 호출 후 DB 저장) ----
+    //
+    // 🔴 트랜잭션을 «AI 호출 앞뒤로» 나눈다.
+    //    AI 호출은 2026-09-01 실측으로 **13초** 걸린다. 트랜잭션 안에서 부르면 그동안
+    //    Oracle 커넥션을 붙잡고 있어, 동시에 열 명만 요청해도 로그인 같은 무관한 요청까지
+    //    대기한다 (docs/rules/ai-call-policy.md R1).
+    //
+    // ⚠️ NOT_SUPPORTED 가 필요한 이유: 이 클래스에 @Transactional(readOnly = true) 가
+    //    걸려 있어서, 아무것도 안 붙이면 «읽기 전용 트랜잭션»이 AI 호출 내내 열려 있게 된다.
+    //    여기서 명시적으로 트랜잭션을 쓰지 않겠다고 선언해야 실제로 안 열린다.
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ProblemResponse getAiProblem(Long userId, Long chapterId) {
-        User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
-        Chapter chapter = chapterRepository.findById(chapterId).orElseThrow(ChapterNotFoundException::new);
+        // ① 짧은 읽기
+        AiProblemStore.Context ctx = aiProblemStore.loadContext(userId, chapterId);
 
-        // 현재 유저의 난이도 조회 (없으면 기본 MEDIUM)
-        UserChapterStats stats = userChapterStatsRepository
-                .findByUserIdAndChapterId(userId, chapterId)
-                .orElse(null);
-        String difficulty = stats != null ? stats.getCurrentDifficulty().name() : "MEDIUM";
-
-        // FastAPI에 모의문제 생성 요청 (챕터명 + 난이도 + 학년 전달)
+        // ② 트랜잭션 밖에서 AI 호출 (느리고, 자주 실패한다)
         AiServerClient.AiProblemData data = aiServerClient.requestAiProblem(
-                chapter.getTitle(), difficulty, user.getGrade().name());
+                ctx.chapterTitle(), ctx.difficulty().name(), ctx.grade());
 
-        // AI 생성 문제를 DB에 저장 (기출문제와 동일한 테이블, sourceType=AI로 구분)
-        Problem problem = problemRepository.save(Problem.builder()
-                .chapter(chapter)
-                .difficulty(Difficulty.valueOf(difficulty))
-                .problemType(ProblemType.valueOf(data.getProblem_type()))
-                .question(data.getQuestion())
-                .options(data.getOptions())
-                .answer(data.getAnswer())
-                .explanation(data.getExplanation())
-                .sourceType(SourceType.AI)
-                .build());
-
-        return ProblemResponse.of(problem, stats);
+        // ③ 짧은 쓰기
+        return aiProblemStore.save(userId, chapterId, ctx.difficulty(), data);
     }
 }

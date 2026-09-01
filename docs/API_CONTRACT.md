@@ -261,16 +261,22 @@ Spring → FastAPI `/ai/concept` → Gemini. 응답 `{ "concept": "…" }`.
 
 **상태코드**
 
-| 상태 | 언제 | 🔴 Spring 을 거치면 |
+| FastAPI 가 내리는 것 | 언제 | Spring 을 거치면 |
 | --- | --- | --- |
-| 401 | 토큰 없음·서명 불일치·만료 | 500 |
-| 429 | Gemini 할당량 초과 | **500** |
-| 422 | 요청 형식 오류 | 500 |
-| 500 | JSON 파싱 실패 등 | 500 |
+| **429** | 모델 요청 한도 초과 | **429** 「지금은 이용이 몰리고 있어요」 |
+| **502** | 응답이 JSON 이 아님·형식 위반·입력이 한도 초과 | **502** 「AI 응답을 처리하지 못했습니다」 |
+| **503** | 토큰·권한 문제, 서버 무응답, 서비스 종료(410) | **503** 「일시적으로 이용할 수 없습니다」 |
+| 401 | 토큰 없음·서명 불일치·만료 | 503 (학생이 손쓸 수 없는 일이라 묶는다) |
 
-🔴 **네 가지가 학생에게는 한 가지로 보인다.** `RestTemplate` 이 던진 예외를
-`GlobalExceptionHandler` 의 `RuntimeException` 분기가 전부 「서버 내부 에러」로 덮기 때문이다.
-→ [`rules/ai-call-policy.md`](rules/ai-call-policy.md)
+> 🔄 **2026-09-01 정정.** 예전에는 위 네 가지가 **전부 500 「서버 내부 에러」** 하나로
+> 보였다. `RestTemplate` 이 던진 예외가 `GlobalExceptionHandler` 의 `RuntimeException`
+> 분기까지 흘러갔기 때문이다. 이제 `AiServerClient` 가 상태코드를 보존한다.
+>
+> ⚠️ **타임아웃**: 연결 5초 · 읽기 60초 (`ai.server.connect-timeout-ms` /
+> `read-timeout-ms`). 읽기가 긴 이유는 실측 응답이 **13~19초**이기 때문이다 —
+> PRD §4 의 「≤ 5초」를 이미 넘고 있다. 짧게 잡으면 정상 응답까지 끊긴다.
+>
+> 규율: [`rules/ai-call-policy.md`](rules/ai-call-policy.md)
 
 ---
 
