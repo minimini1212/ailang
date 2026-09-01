@@ -200,13 +200,28 @@ CHAPTERS 1 ─── N PROBLEMS
 | `question_grade` | → | `Grade` | `E3`~`E6`→`ELEM_*`, `M1`~`M3`→`MIDDLE_*`, `H1`→`HIGH_1`. 모르면 건너뜀 |
 | `question_topic_name` | → | `CHAPTERS.TITLE` | 없으면 챕터를 만든다 |
 | `question_unit` | → | `CHAPTERS.ORDER_NUM` | ⚠️ `Integer.parseInt` — 숫자가 아니면 예외 |
-| `question_step` | → | `Difficulty` | `기본`→LOW, `표준`→MEDIUM, `심화`→HIGH |
-| `question_difficulty` (1~5) | → | `Difficulty` | `question_step` 이 없을 때만. ≤2 LOW, ≤3 MEDIUM, 그 외 HIGH |
+| `question_step` | → | `Difficulty` | `기본`→LOW, `표준`→MEDIUM, `심화`→HIGH · 🔴 아래 |
+| `question_difficulty` (1~5) | → | `Difficulty` | `question_step` 이 없을 때만. ≤2 LOW, ≤3 MEDIUM, 그 외 HIGH · 🔴 아래 |
 | `question_type1` | → | `ProblemType` | `선택형`→MULTIPLE_CHOICE, 그 외 SHORT_ANSWER |
 | `OCR_info[0].question_text` | → | `QUESTION` | 보기가 이 안에 들어 있다 |
 | `answer_bbox` 중 `type=="answer"` | → | `ANSWER` | 첫 건만. 비면 건너뜀 |
 | `answer_info[0].answer_text` | → | `EXPLANATION` | |
 | (고정) | → | `SOURCE_TYPE` | 항상 `REAL` |
+
+### 🔴 이 난이도 매핑은 실제 자료와 맞지 않는다 (2026-08-31 실측)
+
+원본에 있는 `question_step` 값은 **`기본`(935) · `실생활응용`(217) 둘뿐**이다.
+`표준`·`심화` 는 **한 건도 없다** — 위 표의 그 두 줄은 한 번도 쓰이지 않는다.
+그리고 `question_difficulty` 의 최댓값이 **3** 이라 `> 3` 조건인 HIGH 도 안 나온다.
+
+| | 하 | 중 | 상 |
+| --- | --- | --- | --- |
+| 지금 DB | 454 | 432 | 246 |
+| 이 매핑이 만들 것 | **1,131** | **21** | **0** |
+
+🔴 **즉 지금 DB 는 이 코드로 재현할 수 없다.** 비우면 되돌릴 수 없고, 재적재하면
+난이도 축이 사실상 사라진다. 전말과 근거:
+[`research/aihub-data-measurement-2026-08-31.md`](research/aihub-data-measurement-2026-08-31.md) §1
 
 **멱등성**: 지금 유일한 보호는 `problemRepository.count() > 0` 이다.
 🔴 **전부 아니면 전무다.** 절반만 들어간 상태에서 나머지를 채울 수 없고, 새 학년 자료를

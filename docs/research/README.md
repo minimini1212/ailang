@@ -28,4 +28,5 @@
 
 | 문서 | 내용 |
 | --- | --- |
-| [aihub-json-structure.md](aihub-json-structure.md) | 기출문제 원본 JSON 구조 — ⚠️ **코드에서 유추했다. 실물 확인 필요** |
+| **[aihub-data-measurement-2026-08-31.md](aihub-data-measurement-2026-08-31.md)** | 🔴 **원본 JSON 1,152건 + DB 전수 실측.** 지금 DB 는 현재 코드로 재현할 수 없다 |
+| [aihub-json-structure.md](aihub-json-structure.md) | 기출문제 원본 JSON 구조 — ⚠️ 코드에서 유추한 초판(2026-08-27). 위 문서로 이어진다 |
