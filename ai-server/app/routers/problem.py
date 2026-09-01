@@ -29,7 +29,7 @@ class AiProblemResponse(BaseModel):
 @router.post("/problem", response_model=AiProblemResponse)
 async def generate_ai_problem(
     request: AiProblemRequest,
-    user_id: str = Depends(verify_token),  # JWT 검증
+    caller: str = Depends(verify_token),  # 부른 서비스 이름 (학생이 아니다)
 ):
     """
     AI 모의문제 생성 엔드포인트

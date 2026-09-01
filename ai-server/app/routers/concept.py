@@ -24,7 +24,7 @@ class ConceptResponse(BaseModel):
 @router.post("/concept", response_model=ConceptResponse)
 async def get_concept(
     request: ConceptRequest,
-    user_id: str = Depends(verify_token),  # JWT 검증 (Spring Boot 발급 토큰 사용)
+    caller: str = Depends(verify_token),  # 부른 서비스 이름 (학생이 아니다)
 ):
     """
     문제 풀이 후 관련 개념 설명 엔드포인트

@@ -3,6 +3,7 @@ package com.example.ailang.global.security.filter;
 import com.example.ailang.global.exception.TokenExpiredException;
 import com.example.ailang.global.exception.TokenInvalidException;
 import com.example.ailang.global.jwt.JwtTokenProvider;
+import com.example.ailang.global.jwt.TokenType;
 import com.example.ailang.global.redis.RedisService;
 import com.example.ailang.global.security.userdetails.CustomUserDetails;
 import com.example.ailang.global.security.userdetails.CustomUserDetailsService;
@@ -40,6 +41,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (token != null) {
             try {
                 jwtTokenProvider.validateToken(token);
+
+                // 🔴 «액세스 토큰인지» 를 반드시 확인한다.
+                //    예전에는 서명과 만료만 봐서, 리프레시 토큰을 이 쿠키 자리에 넣으면
+                //    모든 API 가 통과했다. 로그아웃은 액세스 토큰만 블랙리스트에 넣으므로
+                //    유출된 리프레시 토큰이 만료(7일)까지 계속 살아 있었다.
+                //    서비스 토큰(서버 간 호출용)도 여기서 막힌다.
+                jwtTokenProvider.requireType(token, TokenType.ACCESS);
 
                 // 로그아웃된 토큰인지 블랙리스트 확인
                 if (redisService.hasKey(BLACKLIST_KEY_PREFIX + token)) {

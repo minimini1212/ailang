@@ -38,11 +38,13 @@ class RagService:
 
     @staticmethod
     def _key(session_id: str, user_id: str) -> str:
-        # 🔴 세션 키에 반드시 유저를 넣는다. 예전엔 클라이언트가 준 session_id 만 써서
-        #    남의 대화를 읽을 수 있었다.
-        #    ⚠️ 지금 user_id 는 Spring 이 보내는 고정값("service@internal")이라
-        #       실질적인 분리가 아직 안 된다 — Spring 쪽 수정이 선행돼야 한다
-        #       (TODOS.md 2절).
+        # 🔴 세션 키에 반드시 학생을 넣는다. 예전엔 클라이언트가 준 session_id 만 써서
+        #    남의 session_id 를 넣으면 남의 대화가 답변 맥락에 실렸다.
+        #
+        # 🔄 2026-09-01: 이제 진짜로 나뉜다.
+        #    한동안 여기 user_id 는 토큰의 subject 였고 그건 모든 학생에게 같은 고정값
+        #    ("service@internal")이었다. 즉 키를 바꿔도 하이재킹이 그대로 남는 상태였다.
+        #    Spring 의 AiChatController 가 인증된 학생 id 를 실어 보내도록 고쳐서 닫혔다.
         return f"ailang:chat:{user_id}:{session_id}"
 
     async def _get_history(self, key: str) -> list:

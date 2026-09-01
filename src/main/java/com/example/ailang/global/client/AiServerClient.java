@@ -34,9 +34,14 @@ public class AiServerClient {
     @Value("${ai.server.url}")
     private String aiServerUrl;
 
+    // 서버 간 호출의 신원. FastAPI 가 이 이름으로 «누가 불렀나» 를 안다.
+    private static final String SERVICE_NAME = "ailang-spring";
+
     // 내부 서비스 호출용 JWT 토큰을 Authorization 헤더에 포함한 HttpEntity 생성
     private HttpEntity<Object> withAuth(Object body) {
-        String token = jwtTokenProvider.createAccessToken("service@internal");
+        // 🔴 학생 토큰이 아니라 «서비스 토큰» 이다. 종류가 달라서 학생용 API 로는 못 들어온다.
+        //    예전에는 가짜 이메일(service@internal)로 학생 토큰과 똑같은 것을 만들었다.
+        String token = jwtTokenProvider.createServiceToken(SERVICE_NAME);
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -137,9 +142,9 @@ public class AiServerClient {
      * FastAPI POST /ai/chat 호출
      * - 질문과 세션 ID를 전달하면 Gemini가 대화 맥락을 유지하며 답변 반환
      */
-    public String requestChat(String question, String sessionId) {
+    public String requestChat(String question, String sessionId, Long userId) {
         ChatResponse response = call("/ai/chat",
-                new ChatRequest(question, sessionId), ChatResponse.class);
+                new ChatRequest(question, sessionId, String.valueOf(userId)), ChatResponse.class);
 
         // 🔴 실패를 답변처럼 돌려주지 않는다. 학생 화면에서 「응답을 받지 못했습니다」가
         //    선생님이 한 말처럼 보이면 안 된다.
@@ -165,6 +170,8 @@ public class AiServerClient {
     static class ChatRequest {
         private final String question;
         private final String session_id;
+        // 🔴 대화를 누구 것으로 저장할지 정하는 값. 서버가 채운다.
+        private final String user_id;
     }
 
     @Getter

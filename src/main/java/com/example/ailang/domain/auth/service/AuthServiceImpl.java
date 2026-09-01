@@ -14,19 +14,23 @@ import com.example.ailang.domain.user.exception.UserAlreadyExistsException;
 import com.example.ailang.domain.user.exception.UserNotFoundException;
 import com.example.ailang.domain.user.repository.UserRepository;
 import com.example.ailang.global.exception.TokenExpiredException;
+import com.example.ailang.global.exception.TokenInvalidException;
 import com.example.ailang.global.jwt.JwtProperties;
 import com.example.ailang.global.jwt.JwtTokenProvider;
+import com.example.ailang.global.jwt.TokenType;
 import com.example.ailang.global.redis.RedisService;
 import com.example.ailang.global.security.util.CookieUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
@@ -85,6 +89,8 @@ public class AuthServiceImpl implements AuthService {
 
         try {
             jwtTokenProvider.validateToken(refreshToken);
+            // 🔴 재발급은 «리프레시 토큰만» 받는다. 액세스 토큰으로 무한 연장을 못 하게.
+            jwtTokenProvider.requireType(refreshToken, TokenType.REFRESH);
         } catch (TokenExpiredException e) {
             throw new RefreshTokenExpiredException();
         }
@@ -103,21 +109,38 @@ public class AuthServiceImpl implements AuthService {
     public void logout(HttpServletRequest request, HttpServletResponse response) {
         String accessToken = cookieUtil.getAccessToken(request).orElse(null);
 
-        if (accessToken != null) {
-            try {
-                String email = jwtTokenProvider.getEmailIgnoreExpiry(accessToken);
-                redisService.delete(REFRESH_KEY_PREFIX + email);
-
-                // Access Token 블랙리스트 등록: 남은 만료 시간만큼 Redis에 유지 후 자동 삭제
-                long remaining = jwtTokenProvider.getRemainingExpiration(accessToken);
-                if (remaining > 0) {
-                    redisService.save(BLACKLIST_KEY_PREFIX + accessToken, "logout", Duration.ofMillis(remaining));
-                }
-            } catch (Exception ignored) {}
-        }
-
+        // 🔴 쿠키부터 지운다. 아래에서 실패하더라도 브라우저 쪽은 확실히 정리된다.
         cookieUtil.deleteAccessTokenCookie(response);
         cookieUtil.deleteRefreshTokenCookie(response);
+
+        if (accessToken == null) {
+            return;   // 애초에 로그인 상태가 아니었다
+        }
+
+        // 🔴 여기서 실패를 삼키지 않는다.
+        //    예전에는 catch (Exception ignored) {} 였다. 그 블록 안이 «로그아웃의 전부»
+        //    (리프레시 토큰 삭제 + 액세스 토큰 블랙리스트 등록)인데, Redis 가 죽어 있으면
+        //    둘 다 안 되고도 200 이 나갔다. 학생은 로그아웃됐다고 믿지만 탈취된 토큰은
+        //    만료까지 그대로 유효하다 — 커밋 8c59162 에서 고쳤던 바로 그 취약점이
+        //    장애 상황에서 되살아나는 경로다.
+        String email;
+        try {
+            email = jwtTokenProvider.getEmailIgnoreExpiry(accessToken);
+        } catch (TokenInvalidException e) {
+            // 서명이 깨진 토큰이면 서버에 지울 것도 없다. 쿠키는 이미 지웠다.
+            log.info("[logout] 해석할 수 없는 토큰 - 쿠키만 정리했습니다.");
+            return;
+        }
+
+        redisService.delete(REFRESH_KEY_PREFIX + email);
+
+        // Access Token 블랙리스트 등록: 남은 만료 시간만큼 Redis에 유지 후 자동 삭제
+        long remaining = jwtTokenProvider.getRemainingExpiration(accessToken);
+        if (remaining > 0) {
+            redisService.save(BLACKLIST_KEY_PREFIX + accessToken, "logout", Duration.ofMillis(remaining));
+        }
+        // ⚠️ Redis 가 죽어 있으면 여기서 RedisConnectionFailureException 이 올라가고
+        //    GlobalExceptionHandler 가 503 으로 답한다. 「로그아웃됐다」고 거짓말하지 않는다.
     }
 
     private void issueTokens(String email, HttpServletResponse response) {
