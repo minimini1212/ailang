@@ -6,6 +6,9 @@ from app.services.auth_service import verify_token
 
 router = APIRouter()
 
+# 요청마다 만들지 않는다 (docs/rules/ai-call-policy.md §3).
+_service = AiProblemService()
+
 
 class AiProblemRequest(BaseModel):
     """Spring Boot에서 전달하는 모의문제 생성 요청"""
@@ -15,7 +18,7 @@ class AiProblemRequest(BaseModel):
 
 
 class AiProblemResponse(BaseModel):
-    """Gemini가 생성한 모의문제 응답"""
+    """모델이 생성한 모의문제 응답"""
     question: str
     problem_type: str
     options: Optional[str] = None   # 객관식 보기 JSON 문자열 (단답형이면 null)
@@ -31,10 +34,9 @@ async def generate_ai_problem(
     """
     AI 모의문제 생성 엔드포인트
     - Spring Boot가 챕터명, 난이도, 학년을 전달
-    - Gemini가 해당 조건에 맞는 수학 문제를 생성해 반환
+    - 모델이 해당 조건에 맞는 수학 문제를 생성해 반환
     """
-    service = AiProblemService()
-    data = await service.generate(
+    data = await _service.generate(
         chapter_title=request.chapter_title,
         difficulty=request.difficulty,
         grade=request.grade,

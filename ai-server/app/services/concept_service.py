@@ -1,8 +1,5 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage
-from google.api_core.exceptions import ResourceExhausted
-from app.config import settings
-from app.exceptions import GeminiQuotaException
+from app.llm_call import ask
 
 # 학년 코드를 한국어 학년명으로 변환하는 매핑
 GRADE_DISPLAY = {
@@ -21,14 +18,8 @@ class ConceptService:
     """
     문제 풀이 후 관련 개념을 설명해주는 서비스
     - 문제 본문 + 학년 + 챕터명을 프롬프트에 주입
-    - Gemini가 해당 학년 수준에 맞는 개념 설명을 생성
+    - 모델이 해당 학년 수준에 맞는 개념 설명을 생성
     """
-
-    def __init__(self):
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            google_api_key=settings.gemini_api_key,
-        )
 
     async def explain(self, question: str, grade: str, chapter_title: str) -> str:
         grade_name = GRADE_DISPLAY.get(grade, grade)
@@ -52,8 +43,4 @@ class ConceptService:
 
 친근하고 격려하는 말투로 작성해주세요."""
 
-        try:
-            response = await self.llm.ainvoke([HumanMessage(content=prompt)])
-        except ResourceExhausted:
-            raise GeminiQuotaException()
-        return response.content
+        return await ask([HumanMessage(content=prompt)])

@@ -5,6 +5,9 @@ from app.services.auth_service import verify_token
 
 router = APIRouter()
 
+# 요청마다 만들지 않는다 (docs/rules/ai-call-policy.md §3).
+_service = ConceptService()
+
 
 class ConceptRequest(BaseModel):
     """Spring Boot에서 전달하는 개념 설명 요청"""
@@ -14,7 +17,7 @@ class ConceptRequest(BaseModel):
 
 
 class ConceptResponse(BaseModel):
-    """Gemini가 생성한 개념 설명 응답"""
+    """모델이 생성한 개념 설명 응답"""
     concept: str
 
 
@@ -25,10 +28,9 @@ async def get_concept(
 ):
     """
     문제 풀이 후 관련 개념 설명 엔드포인트
-    - Spring Boot가 문제 정보를 전달하면 Gemini로 개념 설명 생성 후 반환
+    - Spring Boot가 문제 정보를 전달하면 모델이 개념 설명을 생성해 반환
     """
-    service = ConceptService()
-    concept = await service.explain(
+    concept = await _service.explain(
         question=request.question,
         grade=request.grade,
         chapter_title=request.chapter_title,
