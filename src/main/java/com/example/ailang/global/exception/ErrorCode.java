@@ -25,6 +25,9 @@ public enum ErrorCode {
 
     CHAPTER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 챕터입니다."),
     PROBLEM_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 조건에 맞는 문제가 없습니다."),
+    PROBLEM_NOT_IN_CHAPTER(HttpStatus.BAD_REQUEST, "문제와 챕터가 맞지 않습니다."),
+    SELF_JUDGE_REQUIRED(HttpStatus.BAD_REQUEST, "단답형은 채점 결과(selfJudge)를 함께 보내야 합니다."),
+    ANSWER_NOT_REVEALABLE(HttpStatus.BAD_REQUEST, "이 문제는 정답을 미리 볼 수 없습니다."),
 
     // AI 서버(FastAPI)에서 넘어오는 실패. 🔴 종류를 뭉개지 않는다 —
     // 학생이 다시 시도하면 되는지, 기다려야 하는지, 우리가 고쳐야 하는지가 다르다.

@@ -1,6 +1,6 @@
 # 코드 개관 — 어디에 무엇이 있고, 왜 그 폴더가 있나
 
-> **최종 갱신: 2026-08-27**
+> **최종 갱신: 2026-09-02**
 > 파일이 생기거나 역할이 바뀌면 이 문서를 **같은 커밋에서** 갱신한다 — 폴더 지도, 역할 설명,
 > 그리고 위의 「최종 갱신」 날짜까지. 낡은 지도는 없는 지도보다 나쁘다.
 
@@ -68,12 +68,13 @@ GET /api/problems/adaptive?chapterId=1
 ```
 POST /api/problems/42/submit
    │
-   ├─ 객관식이면  → normalizeAnswer 로 양쪽을 정규화해 비교   (서버가 채점)
-   │  단답형이면  → 🔴 request.selfJudge 를 그대로 믿는다     (클라이언트가 채점)
+   ├─ 객관식이면  → AnswerNormalizer 로 표기를 맞춰 비교      (서버가 채점)
+   │  단답형이면  → request.selfJudge          (⚠️ 없으면 400, 오답 아님)
    │
-   ├─ USER_PROBLEM_HISTORY 에 한 건 남긴다     ← 되돌아볼 수 있는 사실
+   ├─ 문제가 그 챕터에 속하나?                  아니면 400
+   ├─ USER_PROBLEM_HISTORY 에 한 건 남긴다     ← 사실이므로 언제나 남긴다
    ├─ USER_CHAPTER_STATS 를 찾거나 만든다      ← ⚠️ 잠금 없는 read-then-write
-   └─ stats.recordAnswer(맞았나)
+   └─ 🔴 «이 문제의 첫 제출일 때만» stats.recordAnswer(맞았나)
         누적 +1 → 정답률 계산 → 난이도 재계산
         · 3문제 미만이면 안 바꾼다 (아직 모른다)
         · 80% 이상 올린다 / 50% 미만 내린다
@@ -122,16 +123,18 @@ global/          도메인이 공유하는 것들
 ## §3. 폴더 지도 — FastAPI (`ai-server/app/`)
 
 ```
-main.py            앱 조립 + 라우터 등록 + Gemini 할당량 예외 → 429
+main.py            앱 조립 + 라우터 등록 + 실패 종류별 응답 (429·502·503)
 config.py          환경변수를 읽는 유일한 자리
-exceptions.py      GeminiQuotaException
+exceptions.py      실패의 «종류» 넷 (한도·토큰·응답형식·무응답)
+llm.py             🎯 모델 클라이언트를 만드는 유일한 자리 (한 번만 만든다)
+llm_call.py        🎯 모델을 «부르는» 유일한 자리. 여기서 실패를 분류한다
 routers/           요청/응답 모양(pydantic)과 경로만. 판단은 안 한다
   chat.py  concept.py  problem.py
-services/          🎯 프롬프트와 모델 호출이 사는 자리
-  auth_service.py    JWT 검증 (⚠️ 서명·만료만. 블랙리스트는 모른다)
+services/          🎯 프롬프트가 사는 자리
+  auth_service.py    JWT 검증 — SERVICE 토큰만 받는다 (학생 토큰은 401)
   concept_service.py 개념 설명 프롬프트
-  problem_service.py 모의문제 프롬프트 + JSON 파싱
-  rag_service.py     챗봇 — 🔴 이름과 달리 RAG 검색은 TODO 한 줄이다
+  problem_service.py 모의문제 프롬프트 + JSON 파싱 + LaTeX 복원 + 저장 전 검증
+  rag_service.py     챗봇 — ⚠️ 이름과 달리 RAG 검색은 아직 없다 (Phase 3)
 ```
 
 ---
@@ -142,10 +145,11 @@ services/          🎯 프롬프트와 모델 호출이 사는 자리
 
 | 파일 | 무엇 | 알아야 할 것 |
 | --- | --- | --- |
-| `domain/problem/service/ProblemServiceImpl` | 문제 선택·채점·개념 설명·AI 문제 | 🔴 단답형은 클라이언트 판정을 그대로 쓴다. `getAiProblem` 은 트랜잭션 안에서 HTTP 를 부른다 |
+| `domain/problem/service/ProblemServiceImpl` | 문제 선택·채점·개념 설명·AI 문제 | ⚠️ 단답형은 여전히 클라이언트 판정을 쓴다(결정 대기). `getAiProblem` 은 트랜잭션 밖에서 AI 를 부른다 |
 | `domain/problem/entity/UserChapterStats` | 통계 누적 + 난이도 재계산 | 🎯 난이도 규칙이 **여기 하나에만** 있다. 좋은 상태다 — 흩뜨리지 말 것 |
-| `domain/problem/enums/Difficulty` | `upgrade()` / `downgrade()` | 양 끝(LOW·HIGH)에서 제자리. 검사가 없다 |
-| `ProblemServiceImpl.normalizeAnswer` | LaTeX·원문자·공백 흡수 | 🔴 정규식 8줄인데 **검사가 하나도 없다**. 지금 맞는지 아무도 모른다 |
+| `domain/problem/enums/Difficulty` | `upgrade()` / `downgrade()` | 양 끝(LOW·HIGH)에서 제자리. 🔴 아직 검사가 없다 |
+| `domain/problem/service/AiProblemStore` | AI 문제의 DB 작업만 | 🎯 트랜잭션을 AI 호출 앞뒤로 짧게 나누려고 뗀 별도 빈 |
+| `domain/problem/service/AnswerNormalizer` | 정답 표기 맞추기 (순수 함수) | ✅ **검사 15건이 붙어 있다.** 🔴 모르는 표기는 지우지 않는다 — 지우면 다른 답이 같아진다 |
 | `domain/problem/repository/ProblemRepository` | 네이티브 쿼리 5개 | 🔴 전부 `SOURCE_TYPE = 'REAL'` 을 손으로 적는다. 새 쿼리에서 빠지면 조용히 섞인다 |
 
 ### 🔒 경계와 관문
@@ -154,18 +158,18 @@ services/          🎯 프롬프트와 모델 호출이 사는 자리
 | --- | --- | --- |
 | `global/config/SecurityConfig` | 경로별 인증 규칙·CORS | 🔴 **역할(ADMIN) 규칙이 하나도 없다.** `GET /api/chapters` 만 열려 있다 |
 | `global/security/filter/JwtAuthenticationFilter` | 쿠키 토큰 검증 + 블랙리스트 | 🎯 토큰이 없으면 그냥 통과시킨다 — 거부는 `SecurityConfig` 몫 |
-| `global/jwt/JwtTokenProvider` | 토큰 발급·파싱 | jjwt 0.11.2 (옛 API). subject 는 **이메일**이다 |
-| `global/client/AiServerClient` | 🎯 **FastAPI 를 부르는 유일한 자리** | 🔴 타임아웃 없음. `service@internal` 토큰을 스스로 만든다 |
-| `ai-server/app/services/auth_service.py` | 반대편 JWT 검증 | 🔴 서명·만료만 본다. Spring 의 블랙리스트를 모른다 |
+| `global/jwt/JwtTokenProvider` · `TokenType` | 토큰 발급·파싱·**종류 확인** | jjwt 0.11.2 (옛 API). 🔴 `typ` 클레임(ACCESS/REFRESH/SERVICE)이 쓰이는 자리마다 요구된다 |
+| `global/client/AiServerClient` | 🎯 **FastAPI 를 부르는 유일한 자리** | 서비스 토큰을 붙이고, AI 실패를 429·502·503 으로 보존한다 |
+| `ai-server/app/services/auth_service.py` | 반대편 JWT 검증 | SERVICE 토큰만 받는다. ⚠️ Spring 의 로그아웃 블랙리스트는 여전히 모른다 |
 
 ### 🔧 그 외
 
 | 파일 | 무엇 | 알아야 할 것 |
 | --- | --- | --- |
 | `global/loader/DataLoader` | 기출 JSON → DB | 🔴 경로가 틀려도 **경고만** 남기고 문제 0건으로 뜬다 |
-| `global/exception/GlobalExceptionHandler` | 전역 예외 → 응답 | 🔴 마지막 `RuntimeException` 분기가 AI 서버의 429 를 500 으로 덮는다 |
+| `global/exception/GlobalExceptionHandler` | 전역 예외 → 응답 | ⚠️ 마지막 `RuntimeException` 분기가 넓다. AI 실패는 `AiServerClient` 가 먼저 분류해 빠져나간다 |
 | `global/response/ResponseDTO` | 공통 봉투 | `code` 는 HTTP 상태와 같은 값이다 |
-| `global/config/AppConfig` | `PasswordEncoder`·`RestTemplate` | 🔴 `RestTemplate` 에 타임아웃 설정이 없다 |
+| `global/config/AppConfig` | `PasswordEncoder`·`RestTemplate` | 연결 5초·읽기 60초. ⚠️ 읽기가 긴 건 AI 응답이 실측 13~19초라서다 |
 | `scripts/normalize_answers.py` | 원문자 정답 일괄 정규화 | ⚠️ **1회성**이고 DB 접속 정보가 **하드코딩**돼 있다. 돌리기 전에 확인할 것 |
 
 ---
@@ -179,9 +183,12 @@ services/          🎯 프롬프트와 모델 호출이 사는 자리
 | 모듈 | 왜 생겼나 |
 | --- | --- |
 | `Problem.sourceType` | Gemini 생성 문제를 저장하기 시작하면서, 기출과 섞이면 **검증 안 된 정답이 학생의 난이도를 정하게 되므로** 분리했다 |
-| `ProblemServiceImpl.normalizeAnswer` | 적재된 기출 정답이 LaTeX(`$\frac{3}{4}$`)·원문자(`①`)로 들어 있어 학생 입력과 문자열 비교가 안 됐다 |
+| `AnswerNormalizer` | 적재된 기출 정답이 LaTeX(`$\frac{3}{4}$`)·원문자(`①`)로 들어 있어 학생 입력과 문자열 비교가 안 됐다. 🔄 2026-09-02 에 `ProblemServiceImpl` 의 private 메서드에서 꺼냈다 — private 이라 검사를 못 붙이고 있었다 |
+| `TokenType` | 액세스·리프레시·서비스 토큰이 구분되지 않아, 리프레시 토큰 하나로 모든 API 가 통과했다 |
+| `AiProblemStore` | AI 호출이 실측 13초인데 트랜잭션 안에 있어 그동안 DB 커넥션을 붙잡았다 |
+| `ai-server/app/llm_call.py` | 실패를 세 서비스가 각자 분류하고 있었다. 한 자리로 모았다 |
 | `scripts/normalize_answers.py` | 위 정규화를 런타임이 아니라 **저장된 데이터 자체**에 한 번 적용하려고. 정규식으로 못 푸는 정답이 남아 있었다 |
-| `AiServerClient.withAuth` | FastAPI 호출에 JWT 가 빠져 401 이 나던 것을 고치면서. ⚠️ 그때 「서비스 신원」이 아니라 **가짜 유저 토큰**으로 해결한 것이 지금 부채다 |
+| `AiServerClient.withAuth` | FastAPI 호출에 JWT 가 빠져 401 이 나던 것을 고치면서. ⚠️ 그때 「서비스 신원」이 아니라 **가짜 유저 토큰**(`service@internal`)으로 때웠고, 그래서 학생 토큰과 구분되지 않았다. 🔄 2026-09-01 에 `TokenType.SERVICE` 로 정리했다 |
 | `JwtAuthenticationFilter` 의 블랙리스트 | 로그아웃 뒤에도 탈취된 access token 이 만료 전까지 유효하던 취약점 때문 |
 | `User.assessmentCompleted` | 진단 테스트를 이미 본 학생에게 또 보여주지 않으려고 |
 | `springboot4-dotenv` 의존성 | Spring Boot 4 에서 `spring-dotenv` 4.0.0 이 안 붙어서. `build.gradle` 주석에 근거가 있다 |
@@ -195,7 +202,7 @@ services/          🎯 프롬프트와 모델 호출이 사는 자리
 cp .env.example .env          # 값은 직접 채운다
 docker compose up -d          # Oracle · Redis · FastAPI
 ./gradlew bootRun             # Spring (compose 에 없다 — 따로 띄운다)
-./gradlew test                # 🔴 현재 컨텍스트 로딩 테스트 1개뿐이다
+./gradlew test                # 🎯 인프라 없이 도는 검사 15건 + 컨텍스트 로딩 1건
 ```
 
 🔴 **기동 로그에서 `[DataLoader] 적재 완료 - 삽입: N개` 의 N 을 확인할 것.**

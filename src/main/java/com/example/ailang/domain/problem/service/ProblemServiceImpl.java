@@ -14,7 +14,10 @@ import com.example.ailang.domain.problem.entity.UserProblemHistory;
 import com.example.ailang.domain.problem.enums.Difficulty;
 import com.example.ailang.domain.problem.enums.ProblemType;
 import com.example.ailang.domain.problem.enums.SourceType;
+import com.example.ailang.domain.problem.exception.AnswerNotRevealableException;
 import com.example.ailang.domain.problem.exception.ProblemNotFoundException;
+import com.example.ailang.domain.problem.exception.ProblemNotInChapterException;
+import com.example.ailang.domain.problem.exception.SelfJudgeRequiredException;
 import com.example.ailang.domain.problem.repository.ProblemRepository;
 import com.example.ailang.domain.problem.repository.UserChapterStatsRepository;
 import com.example.ailang.domain.problem.repository.UserProblemHistoryRepository;
@@ -87,20 +90,20 @@ public class ProblemServiceImpl implements ProblemService {
         Problem problem = problemRepository.findById(problemId).orElseThrow(ProblemNotFoundException::new);
         Chapter chapter = chapterRepository.findById(request.getChapterId()).orElseThrow(ChapterNotFoundException::new);
 
-        // 정답 여부 판단
-        // - 객관식(MULTIPLE_CHOICE): 서버에서 자동 채점 (정규화 후 비교)
-        // - 단답형(SHORT_ANSWER): 유저 자가 채점 결과(selfJudge) 사용
-        boolean isCorrect;
-        if (problem.getProblemType() == ProblemType.SHORT_ANSWER) {
-            // 단답형: selfJudge 없으면 false 처리 (프론트에서 반드시 전달해야 함)
-            isCorrect = Boolean.TRUE.equals(request.getSelfJudge());
-        } else {
-            // 객관식: 정규화 후 자동 비교
-            isCorrect = normalizeAnswer(problem.getAnswer())
-                    .equalsIgnoreCase(normalizeAnswer(request.getUserAnswer()));
+        // 🔴 두 개의 id 가 오면 관계를 증명한 뒤에 쓴다.
+        //    예전에는 problemId 가 chapterId 에 속하는지 확인하지 않아서, 학생이 통계를
+        //    올릴 챕터를 마음대로 고를 수 있었다 (안 푼 챕터에 정답을 쌓는 식으로).
+        if (!problem.getChapter().getId().equals(chapter.getId())) {
+            throw new ProblemNotInChapterException();
         }
 
+        boolean isCorrect = grade(problem, request);
+
         // 풀이 이력 1건 저장 (USER_PROBLEM_HISTORY에 INSERT)
+        // 🎯 이력은 «사실» 이므로 언제나 남긴다. 반복 제출이어도 남긴다.
+        boolean firstAttempt = !userProblemHistoryRepository
+                .existsByUserIdAndProblemId(userId, problemId);
+
         userProblemHistoryRepository.save(UserProblemHistory.builder()
                 .user(user)
                 .problem(problem)
@@ -117,45 +120,54 @@ public class ProblemServiceImpl implements ProblemService {
                         UserChapterStats.builder().user(user).chapter(chapter).build()
                 ));
 
-        // 정답 여부 기록 + 난이도 재계산 (엔티티 내부 메서드에서 처리)
-        stats.recordAnswer(isCorrect);
+        // 🔴 통계에는 «문제당 첫 제출» 만 반영한다.
+        //    제출 응답이 정답을 알려주므로(설계), 중복 제출을 막지 않으면
+        //    ① 틀린 답을 내서 정답을 알아내고 ② 정답을 반복 제출해서
+        //    정답률을 원하는 값으로 만들 수 있다. 객관식만으로도 된다.
+        //    이력은 위에서 이미 남겼다 — 통계(요약)에만 안 넣는 것이다.
+        if (firstAttempt) {
+            stats.recordAnswer(isCorrect);
+        }
 
         return SubmitAnswerResponse.of(isCorrect, problem.getAnswer(), problem.getExplanation(), stats);
     }
 
-    @Override
-    // ---- 단답형 정답 공개 (자가채점용, 이력 저장 없음) ----
-    public AnswerRevealResponse revealAnswer(Long problemId) {
-        Problem problem = problemRepository.findById(problemId).orElseThrow(ProblemNotFoundException::new);
-        return AnswerRevealResponse.of(problem.getAnswer(), problem.getExplanation());
+    /**
+     * 정답 여부를 정한다.
+     *
+     * <p>🔴 클라이언트가 보낸 판정을 그대로 쓰는 자리는 단답형 하나뿐이고, 그것도
+     * 값이 없으면 «틀림» 이 아니라 «요청 거부» 다. 「모른다」를 값으로 접지 않는다.
+     */
+    private boolean grade(Problem problem, SubmitAnswerRequest request) {
+        if (problem.getProblemType() == ProblemType.SHORT_ANSWER) {
+            // 단답형: 학생 자가 채점 (수학 단답형은 2/4·1/2·0.5 가 다 맞는 답이라
+            //        문자열 비교가 어렵다 — docs/rules/grading-and-difficulty.md §4)
+            // 🔴 값이 없으면 오답으로 기록하지 않는다. 프론트 버그가 학생 정답률을 깎는다.
+            if (request.getSelfJudge() == null) {
+                throw new SelfJudgeRequiredException();
+            }
+            return request.getSelfJudge();
+        }
+        // 객관식: 서버가 채점한다
+        return AnswerNormalizer.matches(problem.getAnswer(), request.getUserAnswer());
     }
 
-    /**
-     * 정답 정규화: LaTeX 표기와 일반 표기 모두 허용
-     * - $ 제거, 공백 제거
-     * - \frac{a}{b} → a/b
-     * - ^{n} → ^n, _{n} → _n (중괄호 제거)
-     * - \times → ×, \div → ÷, \cdot → ·, \pm → ±
-     * - 나머지 LaTeX 명령어 제거 (\word)
-     * - 남은 중괄호 제거
-     */
-    private String normalizeAnswer(String answer) {
-        String s = answer;
-        s = s.replaceAll("\\$", "");                                          // $ 제거
-        s = s.replaceAll("\\s+", "");                                         // 공백 제거
-        // 원문자 → 숫자 변환 (DB 정답 "①" ↔ 유저 제출 "1" 매칭)
-        s = s.replace("①", "1").replace("②", "2").replace("③", "3")
-             .replace("④", "4").replace("⑤", "5");
-        s = s.replaceAll("\\\\frac\\{([^}]*)\\}\\{([^}]*)\\}", "$1/$2");      // \frac{a}{b} → a/b
-        s = s.replaceAll("\\^\\{([^}]+)\\}", "^$1");                          // ^{n} → ^n
-        s = s.replaceAll("_\\{([^}]+)\\}", "_$1");                            // _{n} → _n
-        s = s.replaceAll("\\\\times", "×");
-        s = s.replaceAll("\\\\div", "÷");
-        s = s.replaceAll("\\\\cdot", "·");
-        s = s.replaceAll("\\\\pm", "±");
-        s = s.replaceAll("\\\\[a-zA-Z]+", "");                               // 나머지 LaTeX 명령어 제거
-        s = s.replaceAll("[{}]", "");                                         // 중괄호 제거
-        return s;
+    @Override
+    // ---- 단답형 정답 공개 (자가채점용, 이력 저장 없음) ----
+    //
+    // 🔴 «단답형만» 이다. 예전에는 유형을 안 봐서 객관식 정답도 제출 전에 나갔다.
+    //    객관식은 서버가 채점하므로 정답을 미리 줄 이유가 없다.
+    //
+    // ⚠️ 「이미 제출했는지」는 확인하지 않는다 — 확인하면 안 된다.
+    //    단답형 자가채점은 «정답 공개 → 학생이 판단 → 제출» 순서라(Assessment.tsx),
+    //    제출 여부를 요구하면 그 흐름이 통째로 막힌다.
+    public AnswerRevealResponse revealAnswer(Long problemId) {
+        Problem problem = problemRepository.findById(problemId).orElseThrow(ProblemNotFoundException::new);
+
+        if (problem.getProblemType() != ProblemType.SHORT_ANSWER) {
+            throw new AnswerNotRevealableException();
+        }
+        return AnswerRevealResponse.of(problem.getAnswer(), problem.getExplanation());
     }
 
     @Override
