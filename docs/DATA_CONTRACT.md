@@ -1,6 +1,6 @@
 # 데이터 계약 — 표·컬럼·어휘·환경변수의 진실
 
-> **최종 갱신: 2026-08-27** — 코드에서 확인한 상태다.
+> **최종 갱신: 2026-09-02** — 코드에서 확인한 상태다.
 > 스키마·필드·환경변수를 바꾸면 **같은 작업 안에서** 이 문서와 [`../.env.example`](../.env.example)
 > 을 갱신한다. 두 곳이 갈리면 다음 사람은 어느 쪽이 맞는지 알 수 없다.
 
@@ -86,6 +86,9 @@ OAuth2 경로(`CustomOAuth2UserService`)는 받지 않는다. `user.getGrade().n
 ⚠️ **`(GRADE, TITLE)` 에 유니크 제약이 없다.** `DataLoader` 는 캐시 + `findByGradeAndTitle`
 로 중복을 피하지만, 그건 **한 프로세스 안에서만** 통하는 보호다.
 
+⚠️ **`ORDER_NUM` 은 사실상 순서가 아니다.** 실측(2026-08-31)에서 챕터가 331개인데
+원본의 `question_unit` 값은 **8종뿐**이라 한 순번에 챕터 수십 개가 몰린다.
+
 ### PROBLEMS
 
 | 컬럼 | 타입 | 비고 |
@@ -116,7 +119,7 @@ OAuth2 경로(`CustomOAuth2UserService`)는 받지 않는다. `user.getGrade().n
 | `USER_ID` | NUMBER NOT NULL (FK) | |
 | `PROBLEM_ID` | NUMBER NOT NULL (FK) | |
 | `USER_ANSWER` | VARCHAR2(200) NOT NULL | 학생이 낸 답 **원문 그대로** |
-| `IS_CORRECT` | NUMBER(1) NOT NULL | 🔴 지금 이 값의 출처가 문제다 — §3 |
+| `IS_CORRECT` | NUMBER(1) NOT NULL | 객관식은 서버 채점, 단답형은 학생 자가 채점. ⚠️ 후자는 결정 대기 |
 | `CREATED_AT` | TIMESTAMP | = 푼 시각 |
 
 인덱스: `(USER_ID, CREATED_AT DESC)`
@@ -180,11 +183,11 @@ CHAPTERS 1 ─── N PROBLEMS
 
 | 상황 | 지금 저장되는 값 | 🔴 저장돼야 할 것 |
 | --- | --- | --- |
-| 단답형인데 `selfJudge` 가 안 왔다 | **오답(`0`)** | 저장 안 함 — **400 으로 거부** |
+| 단답형인데 `selfJudge` 가 안 왔다 | ✅ **400 으로 거부** | (닫힘) |
 | 그 챕터를 아직 3문제 미만 풀었다 | 난이도 유지 ✅ | (맞다) 「모른다」로 취급 중 |
 | 학년을 아직 안 골랐다 (구글 가입) | — | 🔴 NPE 로 500. 「미입력」 상태가 필요하다 |
-| AI 호출이 실패했다 | 500 (한 종류) | 한도초과 · 모델거부 · 형식오류 · 서버다운 구분 |
-| 적재 때 건너뛴 문제 | `skipped` 카운터 하나 | 사유별 집계 (§5) |
+| AI 호출이 실패했다 | ✅ 429·502·503 으로 구분 | (닫힘) |
+| 적재 때 건너뛴 문제 | ✅ 사유 6종으로 집계 (§5) | (닫힘) |
 
 🔴 **세 가지 상태가 필요한 자리에 boolean 을 쓰지 않는다.**
 「맞음/틀림」에는 언제나 「아직 안 풀었음」이 따라온다.
@@ -199,12 +202,12 @@ CHAPTERS 1 ─── N PROBLEMS
 | --- | --- | --- | --- |
 | `question_grade` | → | `Grade` | `E3`~`E6`→`ELEM_*`, `M1`~`M3`→`MIDDLE_*`, `H1`→`HIGH_1`. 모르면 건너뜀 |
 | `question_topic_name` | → | `CHAPTERS.TITLE` | 없으면 챕터를 만든다 |
-| `question_unit` | → | `CHAPTERS.ORDER_NUM` | ⚠️ `Integer.parseInt` — 숫자가 아니면 예외 |
+| `question_unit` | → | `CHAPTERS.ORDER_NUM` | 숫자가 아니면 맨 뒤로 보낸다(문제는 살린다). ⚠️ 실측상 값이 8종뿐인데 챕터는 331개라 순서가 사실상 안 정해진다 |
 | `question_step` | → | `Difficulty` | `기본`→LOW, `표준`→MEDIUM, `심화`→HIGH · 🔴 아래 |
 | `question_difficulty` (1~5) | → | `Difficulty` | `question_step` 이 없을 때만. ≤2 LOW, ≤3 MEDIUM, 그 외 HIGH · 🔴 아래 |
 | `question_type1` | → | `ProblemType` | `선택형`→MULTIPLE_CHOICE, 그 외 SHORT_ANSWER |
 | `OCR_info[0].question_text` | → | `QUESTION` | 보기가 이 안에 들어 있다 |
-| `answer_bbox` 중 `type=="answer"` | → | `ANSWER` | 첫 건만. 비면 건너뜀 |
+| `answer_bbox` 중 `type=="answer"` | → | `ANSWER` | 🔄 **전부** 쉼표로 이어 붙인다(복수정답 6건). 비면 건너뜀 |
 | `answer_info[0].answer_text` | → | `EXPLANATION` | |
 | (고정) | → | `SOURCE_TYPE` | 항상 `REAL` |
 
@@ -223,13 +226,21 @@ CHAPTERS 1 ─── N PROBLEMS
 난이도 축이 사실상 사라진다. 전말과 근거:
 [`research/aihub-data-measurement-2026-08-31.md`](research/aihub-data-measurement-2026-08-31.md) §1
 
-**멱등성**: 지금 유일한 보호는 `problemRepository.count() > 0` 이다.
-🔴 **전부 아니면 전무다.** 절반만 들어간 상태에서 나머지를 채울 수 없고, 새 학년 자료를
-추가할 수도 없다(이미 데이터가 있으니 통째로 건너뛴다). 진짜 키는 AI Hub 의 `id` 다 —
-`PROBLEMS` 에 그 컬럼이 없어서 못 쓰고 있다 ([`../TODOS.md`](../TODOS.md) 참고).
+**멱등성**: 보호는 `countBySourceType(REAL) > 0` 이다.
+🔄 **2026-09-02 정정.** 예전에는 전체 건수(`count()`)를 봤는데, AI 모의문제가 같은 표에
+저장되므로 **AI 문제 한 건만 생겨도 기출 적재를 영원히 건너뛰었다.**
 
-**실패 분류**: 지금은 `skipped` 하나로 합쳐진다. 「답안 파일 없음」·「학년 코드 모름」·
-「정답 추출 실패」·「파싱 예외」는 **다른 문제**이고 대응도 다르다.
+🔴 **여전히 전부 아니면 전무다.** 절반만 들어간 상태에서 나머지를 채울 수 없고, 새 학년
+자료를 추가할 수도 없다. 진짜 키는 AI Hub 의 `id` 인데 `PROBLEMS` 에 그 컬럼이 없다
+([`../TODOS.md`](../TODOS.md) 참고).
+
+**실패 분류**: 🔄 사유 6종으로 나눈다 (`LoadOutcome`) — 저장 · 답안 파일 없음 ·
+정답 자리 비어 있음 · 처음 보는 학년 코드 · 필수 필드 없음 · 처리 중 오류.
+예전에는 전부 `skipped` 하나였고, 그러면 「몇 건 안 들어왔다」는 알아도 **무엇을 고쳐야
+하는지**는 알 수 없었다.
+
+**결정성**: 파일을 **이름순**으로 읽는다. `listFiles()` 순서가 OS 의존인데 챕터의
+`ORDER_NUM` 이 「먼저 만난 파일」로 정해져서, 예전에는 같은 자료로도 PC 마다 결과가 달랐다.
 
 ---
 

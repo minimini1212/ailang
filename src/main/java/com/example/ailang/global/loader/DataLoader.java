@@ -44,19 +44,32 @@ public class DataLoader implements CommandLineRunner {
     private String answerDir;
 
     // 학년 코드 → Grade enum 매핑
-    private static final Map<String, Grade> GRADE_MAP = Map.of(
+    //
+    // ⚠️ HashMap 이다. Map.of 로 만든 불변 맵은 **null 키를 조회하는 것만으로 NPE** 다
+    //    (ImmutableCollections.MapN 이 pk.hashCode() 를 부른다). 그래서 예전에는
+    //    JSON 에 question_grade 가 없으면 바로 아래의 「알 수 없는 학년 코드」 가드에
+    //    도달하지 못하고 바깥 catch 로 떨어져 «처리 실패: null» 한 줄만 남았다.
+    //    📌 실측(2026-08-31)으로는 이 자료에 누락이 0건이라 지금 터지지는 않는다.
+    //       그래도 가드가 도달 가능해야 가드다.
+    private static final Map<String, Grade> GRADE_MAP = new HashMap<>(Map.of(
             "E3", Grade.ELEM_3,   "E4", Grade.ELEM_4,
             "E5", Grade.ELEM_5,   "E6", Grade.ELEM_6,
             "M1", Grade.MIDDLE_1, "M2", Grade.MIDDLE_2, "M3", Grade.MIDDLE_3,
             "H1", Grade.HIGH_1
-    );
+    ));
 
     // question_step → Difficulty 매핑
-    private static final Map<String, Difficulty> STEP_MAP = Map.of(
+    //
+    // 🔴 실제 자료에 있는 값은 「기본」(935건)과 「실생활응용」(217건) 둘뿐이다.
+    //    「표준」·「심화」는 **한 건도 없어서** 아래 두 줄은 한 번도 안 쓰인다.
+    //    그래서 이 매핑만으로는 상(HIGH) 이 나오지 않는다 — 난이도 축을 어떻게 정할지는
+    //    사용자 결정 대기 항목이다 (TODOS.md 0절·8절).
+    //    ⚠️ 여기서 매핑을 바꾸지 말 것. 결정 전에 바꾸면 지금 DB 와 또 어긋난다.
+    private static final Map<String, Difficulty> STEP_MAP = new HashMap<>(Map.of(
             "기본", Difficulty.LOW,
             "표준", Difficulty.MEDIUM,
             "심화", Difficulty.HIGH
-    );
+    ));
 
     @Override
     public void run(String... args) {
@@ -64,8 +77,14 @@ public class DataLoader implements CommandLineRunner {
             log.info("[DataLoader] 비활성화 상태 (data.loader.enabled=false)");
             return;
         }
-        if (problemRepository.count() > 0) {
-            log.info("[DataLoader] 문제 데이터가 이미 존재합니다. 적재를 건너뜁니다.");
+        // 🔴 «기출문제» 가 있는지를 본다. 전체 건수가 아니다.
+        //    예전에는 problemRepository.count() 였는데, AI 모의문제도 같은 표에 저장된다.
+        //    그래서 적재 경로가 틀려 0건으로 뜬 상태에서 학생이 AI 문제를 **한 번만**
+        //    만들면 count 가 1이 되어, 그 뒤로는 기출 적재를 **영원히 건너뛴다.**
+        //    로그는 「이미 존재합니다」라고 안심시킨다.
+        long realCount = problemRepository.countBySourceType(SourceType.REAL);
+        if (realCount > 0) {
+            log.info("[DataLoader] 기출문제 {}건이 이미 있습니다. 적재를 건너뜁니다.", realCount);
             return;
         }
 
@@ -88,7 +107,13 @@ public class DataLoader implements CommandLineRunner {
 
         // 챕터 캐시 (앱 실행 중 DB 중복 조회 방지)
         Map<String, Chapter> chapterCache = new HashMap<>();
-        int inserted = 0, skipped = 0;
+
+        // 🔴 실패를 사유별로 센다. 예전에는 전부 skipped 하나였고, 그러면
+        //    「몇 건 안 들어왔다」는 알아도 무엇을 고쳐야 하는지는 알 수 없었다.
+        EnumMap<LoadOutcome, Integer> tally = new EnumMap<>(LoadOutcome.class);
+        // 난이도를 점수로 떨어뜨린 건수 — STEP_MAP 에 없는 값이 얼마나 되는지 보이게 한다
+        int steppedByScore = 0;
+        int multiAnswer = 0;
 
         for (Map.Entry<String, ProblemJson> entry : problems.entrySet()) {
             String      id   = entry.getKey();
@@ -96,39 +121,60 @@ public class DataLoader implements CommandLineRunner {
             AnswerJson  ans  = answers.get(id);
 
             if (ans == null || ans.answerInfo == null || ans.answerInfo.isEmpty()) {
-                skipped++;
+                count(tally, LoadOutcome.NO_ANSWER_FILE);
                 continue;
             }
 
             try {
+                if (prob.questionInfo == null || prob.questionInfo.isEmpty()
+                        || prob.ocrInfo == null || prob.ocrInfo.isEmpty()) {
+                    log.warn("[DataLoader] {} - question_info 또는 OCR_info 가 없습니다", id);
+                    count(tally, LoadOutcome.MISSING_FIELD);
+                    continue;
+                }
+
                 ProblemJson.QuestionInfo info       = prob.questionInfo.get(0);
                 ProblemJson.OcrInfo      ocr        = prob.ocrInfo.get(0);
                 AnswerJson.AnswerInfo    answerInfo = ans.answerInfo.get(0);
 
                 // 학년 변환
+                if (info.questionGrade == null) {
+                    log.warn("[DataLoader] {} - question_grade 필드가 없습니다", id);
+                    count(tally, LoadOutcome.MISSING_FIELD);
+                    continue;
+                }
                 Grade grade = GRADE_MAP.get(info.questionGrade);
                 if (grade == null) {
-                    log.warn("[DataLoader] {} - 알 수 없는 학년 코드: {}", id, info.questionGrade);
-                    skipped++;
+                    log.warn("[DataLoader] {} - 처음 보는 학년 코드: {}", id, info.questionGrade);
+                    count(tally, LoadOutcome.UNKNOWN_GRADE);
                     continue;
                 }
 
                 String questionText = ocr.questionText;
                 String explanation  = answerInfo.answerText;
-                String answer       = extractAnswer(answerInfo.answerBbox);
 
-                if (answer == null || answer.isBlank()) {
-                    log.warn("[DataLoader] {} - 정답 추출 실패", id);
-                    skipped++;
+                // 🔴 정답이 여러 개인 문제가 있다 (실측 6건). 예전에는 «첫 건만» 썼는데,
+                //    그러면 「①,③」이 정답인 문제가 「①」로 저장돼 학생이 맞혀도 오답이 된다.
+                List<String> answers2 = extractAnswers(answerInfo.answerBbox);
+                if (answers2.isEmpty()) {
+                    log.warn("[DataLoader] {} - 정답 자리가 비어 있습니다", id);
+                    count(tally, LoadOutcome.NO_ANSWER_TEXT);
                     continue;
                 }
+                if (answers2.size() > 1) {
+                    multiAnswer++;
+                }
+                String answer = String.join(",", answers2);
 
                 // 챕터 조회 또는 생성
                 Chapter chapter = getOrCreateChapter(chapterCache, grade, info);
 
                 // 난이도 변환 (question_step 우선, 없으면 question_difficulty 점수 기반)
-                Difficulty difficulty = STEP_MAP.getOrDefault(
-                        info.questionStep, difficultyFromScore(info.questionDifficulty));
+                Difficulty difficulty = STEP_MAP.get(info.questionStep);
+                if (difficulty == null) {
+                    difficulty = difficultyFromScore(info.questionDifficulty);
+                    steppedByScore++;
+                }
 
                 // 문제 유형 변환
                 ProblemType type = "선택형".equals(info.questionType1)
@@ -145,24 +191,64 @@ public class DataLoader implements CommandLineRunner {
                         .sourceType(SourceType.REAL)
                         .build());
 
-                inserted++;
+                count(tally, LoadOutcome.INSERTED);
+                int inserted = tally.getOrDefault(LoadOutcome.INSERTED, 0);
                 if (inserted % 100 == 0) {
                     log.info("[DataLoader] {}개 삽입 완료...", inserted);
                 }
 
             } catch (Exception e) {
-                log.warn("[DataLoader] {} 처리 실패: {}", id, e.getMessage());
-                skipped++;
+                log.warn("[DataLoader] {} 처리 실패: {}", id, e.toString());
+                count(tally, LoadOutcome.ERROR);
             }
         }
 
-        log.info("[DataLoader] 적재 완료 - 삽입: {}개, 건너뜀: {}개", inserted, skipped);
+        report(tally, problems.size(), chapterCache.size(), steppedByScore, multiAnswer);
+    }
+
+    private static void count(EnumMap<LoadOutcome, Integer> tally, LoadOutcome outcome) {
+        tally.merge(outcome, 1, Integer::sum);
+    }
+
+    /** 무엇이 들어왔고 무엇이 왜 빠졌는지 한눈에 남긴다. */
+    private void report(EnumMap<LoadOutcome, Integer> tally, int total, int chapters,
+                        int steppedByScore, int multiAnswer) {
+        int inserted = tally.getOrDefault(LoadOutcome.INSERTED, 0);
+        log.info("[DataLoader] ── 적재 결과 ──────────────────────────");
+        log.info("[DataLoader] 대상 {}건 중 {}건 저장 · 챕터 {}개", total, inserted, chapters);
+        for (LoadOutcome o : LoadOutcome.values()) {
+            if (o == LoadOutcome.INSERTED) {
+                continue;
+            }
+            int n = tally.getOrDefault(o, 0);
+            if (n > 0) {
+                log.warn("[DataLoader]   빠짐 {}건 - {}", n, o.label());
+            }
+        }
+        if (multiAnswer > 0) {
+            log.info("[DataLoader]   정답이 여러 개인 문제 {}건 (쉼표로 이어 저장)", multiAnswer);
+        }
+        if (steppedByScore > 0) {
+            // ⚠️ 이 숫자가 크면 question_step 매핑이 실제 자료와 안 맞는다는 뜻이다.
+            log.warn("[DataLoader]   난이도를 점수로 정한 문제 {}건 "
+                    + "(question_step 이 매핑에 없는 값)", steppedByScore);
+        }
+        if (inserted == 0) {
+            log.error("[DataLoader] 🔴 한 건도 저장되지 않았습니다. 위 사유를 확인하세요.");
+        }
+        log.info("[DataLoader] ───────────────────────────────────────");
     }
 
     // ─── 헬퍼 메서드 ────────────────────────────────────────────
 
-    /** 디렉토리 내 모든 JSON 파일을 id 기준 Map으로 로딩 */
-    private <T> Map<String, T> loadJsonDir(String dirPath, Class<T> clazz) {
+    /**
+     * 디렉토리 내 모든 JSON 파일을 id 기준 Map 으로 로딩.
+     *
+     * <p>⚠️ <b>파일 이름 순으로 읽는다.</b> {@code listFiles()} 의 순서는 OS 에 따라 다른데,
+     * 챕터의 {@code orderNum} 이 「먼저 만난 파일」의 값으로 정해지기 때문에 순서가 결과를
+     * 바꾼다. 정렬해 두면 같은 자료로 어디서 적재해도 같은 결과가 나온다.
+     */
+    private <T extends HasId> Map<String, T> loadJsonDir(String dirPath, Class<T> clazz) {
         Map<String, T> result = new LinkedHashMap<>();
         File dir = new File(dirPath);
 
@@ -173,34 +259,68 @@ public class DataLoader implements CommandLineRunner {
 
         File[] files = dir.listFiles((d, name) -> name.endsWith(".json"));
         if (files == null) return result;
+        Arrays.sort(files, Comparator.comparing(File::getName));
 
+        int unreadable = 0;
+        int noId = 0;
         for (File file : files) {
             try {
+                // 🎯 파일을 한 번만 읽는다. 예전에는 id 를 꺼내려고 Map 으로 한 번 더 읽었는데,
+                //    id 필드는 이미 DTO 에 있고 Jackson 이 채워 준다. 1,152건이면 2,304번 파싱이었다.
                 T data = objectMapper.readValue(file, clazz);
-                // id 추출 (raw Map으로 한 번 더 읽어 id 값 확인)
-                @SuppressWarnings("unchecked")
-                Map<String, Object> raw = objectMapper.readValue(file, Map.class);
-                String id = (String) raw.get("id");
-                if (id != null) result.put(id, data);
+                String id = data.id();
+                if (id == null) {
+                    noId++;
+                    continue;
+                }
+                if (result.putIfAbsent(id, data) != null) {
+                    log.warn("[DataLoader] id 중복 - 뒤에 온 파일을 버립니다: {} ({})", id, file.getName());
+                }
             } catch (Exception e) {
+                unreadable++;
                 log.warn("[DataLoader] 파일 읽기 실패 {}: {}", file.getName(), e.getMessage());
             }
+        }
+        if (unreadable > 0 || noId > 0) {
+            log.warn("[DataLoader] {} - 읽기 실패 {}건 · id 없음 {}건", dirPath, unreadable, noId);
         }
         return result;
     }
 
-    /** answer_bbox 에서 type='answer' 항목의 텍스트 추출 */
-    private String extractAnswer(List<AnswerJson.BboxItem> bboxList) {
-        if (bboxList == null) return null;
+    /** id 를 가진 적재 대상. 파일을 두 번 읽지 않기 위한 최소 계약이다. */
+    interface HasId {
+        String id();
+    }
+
+    /**
+     * {@code answer_bbox} 에서 정답으로 표시된 텍스트를 <b>전부</b> 뽑는다.
+     *
+     * <p>🔴 예전에는 {@code findFirst()} 로 첫 건만 썼다. 정답이 여러 개인 문제가
+     * 실제로 6건 있는데(실측 2026-08-31), 그러면 「①,③」이 정답인 문제가 「①」로 저장돼
+     * <b>학생이 맞혀도 오답</b>이 된다.
+     */
+    private List<String> extractAnswers(List<AnswerJson.BboxItem> bboxList) {
+        if (bboxList == null) {
+            return List.of();
+        }
         return bboxList.stream()
                 .filter(b -> "answer".equals(b.type))
                 .map(b -> b.text)
                 .filter(t -> t != null && !t.isBlank())
-                .findFirst()
-                .orElse(null);
+                .map(String::trim)
+                .distinct()
+                .toList();
     }
 
-    /** 챕터 캐시에서 조회, 없으면 DB 조회 후 없으면 생성 */
+    /**
+     * 챕터 캐시에서 조회, 없으면 DB 조회 후 없으면 생성.
+     *
+     * <p>⚠️ {@code orderNum} 은 <b>그 챕터에서 처음 만난 문제</b>의 {@code question_unit} 으로
+     * 정해진다. 실측(2026-08-31)에서 챕터는 331개인데 unit 값은 8종뿐이라
+     * <b>한 순번에 챕터 수십 개가 몰린다</b> — 표시 순서가 사실상 정해지지 않는다.
+     * 파일을 이름순으로 읽게 해서 «실행할 때마다 달라지는» 것은 없앴지만,
+     * 순서 자체를 무엇으로 정할지는 결정 대기 항목이다 ({@code TODOS.md} 0절).
+     */
     private Chapter getOrCreateChapter(Map<String, Chapter> cache,
                                        Grade grade,
                                        ProblemJson.QuestionInfo info) {
@@ -211,7 +331,7 @@ public class DataLoader implements CommandLineRunner {
                             Chapter newChapter = chapterRepository.save(Chapter.builder()
                                     .grade(grade)
                                     .title(info.questionTopicName)
-                                    .orderNum(Integer.parseInt(info.questionUnit))
+                                    .orderNum(parseUnit(info.questionUnit))
                                     .build());
                             log.info("[DataLoader] 챕터 생성: {} - {}", grade, info.questionTopicName);
                             return newChapter;
@@ -219,8 +339,31 @@ public class DataLoader implements CommandLineRunner {
         );
     }
 
-    /** question_difficulty(1~5) 점수 → Difficulty 변환 */
-    private Difficulty difficultyFromScore(int score) {
+    /** {@code question_unit} → 표시 순서. 숫자가 아니면 맨 뒤로 보낸다(문제를 버리지 않는다). */
+    private int parseUnit(String unit) {
+        try {
+            return Integer.parseInt(unit.trim());
+        } catch (NumberFormatException | NullPointerException e) {
+            log.warn("[DataLoader] question_unit 이 숫자가 아닙니다: {} - 맨 뒤로 보냅니다", unit);
+            return Integer.MAX_VALUE;
+        }
+    }
+
+    /**
+     * {@code question_difficulty} 점수 → Difficulty.
+     *
+     * <p>🔴 <b>이 자료에서는 상(HIGH) 이 나오지 않는다.</b> 실측 최댓값이 3 이라
+     * {@code > 3} 조건에 걸리는 문제가 한 건도 없다. 난이도 축을 어떻게 정할지는
+     * 사용자 결정 대기 항목이다 ({@code TODOS.md} 0절·8절) — 여기서 임의로 바꾸지 않는다.
+     *
+     * @param score 없으면 {@code null}. 🔴 「없음」을 0 으로 접지 않는다 —
+     *              예전에는 {@code int} 라 필드가 없으면 0 이 되고, 조용히 하(LOW) 로 적재됐다.
+     */
+    private Difficulty difficultyFromScore(Integer score) {
+        if (score == null) {
+            log.warn("[DataLoader] question_difficulty 가 없습니다 - 중(MEDIUM) 으로 둡니다");
+            return Difficulty.MEDIUM;   // 「모른다」를 가장 낮은 값으로 접지 않는다
+        }
         if (score <= 2) return Difficulty.LOW;
         if (score <= 3) return Difficulty.MEDIUM;
         return Difficulty.HIGH;
@@ -229,8 +372,10 @@ public class DataLoader implements CommandLineRunner {
     // ─── JSON 역직렬화용 내부 클래스 ────────────────────────────
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    static class ProblemJson {
+    static class ProblemJson implements HasId {
         public String id;
+
+        @Override public String id() { return id; }
 
         @JsonProperty("question_info")
         public List<QuestionInfo> questionInfo;
@@ -245,7 +390,8 @@ public class DataLoader implements CommandLineRunner {
             @JsonProperty("question_topic_name") public String questionTopicName;
             @JsonProperty("question_type1")      public String questionType1;
             @JsonProperty("question_step")       public String questionStep;
-            @JsonProperty("question_difficulty") public int    questionDifficulty;
+            // 🔴 Integer 다. int 면 필드가 없을 때 0 이 되어 «없음» 과 «0» 이 구분되지 않는다.
+            @JsonProperty("question_difficulty") public Integer questionDifficulty;
         }
 
         @JsonIgnoreProperties(ignoreUnknown = true)
@@ -256,8 +402,10 @@ public class DataLoader implements CommandLineRunner {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    static class AnswerJson {
+    static class AnswerJson implements HasId {
         public String id;
+
+        @Override public String id() { return id; }
 
         @JsonProperty("answer_info")
         public List<AnswerInfo> answerInfo;
