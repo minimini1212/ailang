@@ -28,5 +28,8 @@
 
 | 문서 | 내용 |
 | --- | --- |
-| **[aihub-data-measurement-2026-08-31.md](aihub-data-measurement-2026-08-31.md)** | 🔴 **원본 JSON 1,152건 + DB 전수 실측.** 지금 DB 는 현재 코드로 재현할 수 없다 |
+| **[reload-result-2026-09-10.md](reload-result-2026-09-10.md)** | 🎯 **재적재 실측 — 챕터 8개로 채워졌다(난이도 재현율 99.8%).** 🔴 그리고 **20건이 처음부터 조용히 빠지고 있었다** — 정답이 200자를 넘어서다 |
+| **[chapter-granularity-2026-09-09.md](chapter-granularity-2026-09-09.md)** | 🔴 **원본에 중단원 층이 없다.** 챕터를 유형 331개 → 대단원 8개로. 난이도 축이 단원 축과 거의 같다는 것까지 |
+| **[difficulty-origin-2026-09-07.md](difficulty-origin-2026-09-07.md)** | 🔴 **난이도는 원본에서 유도되지 않는다.** 12개 필드 전수 대조 · 대응(스냅샷)까지 |
+| [aihub-data-measurement-2026-08-31.md](aihub-data-measurement-2026-08-31.md) | **원본 JSON 1,152건 + DB 전수 실측.** ⚠️ §1「재현할 수 없다」는 위 문서로 **해소됐다**(99.8%) — 나머지 §2~§9 는 그대로 유효 |
 | [aihub-json-structure.md](aihub-json-structure.md) | 기출문제 원본 JSON 구조 — ⚠️ 코드에서 유추한 초판(2026-08-27). 위 문서로 이어진다 |

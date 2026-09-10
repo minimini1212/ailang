@@ -1,11 +1,22 @@
 # ailang — AI와 함께하는 수학 공부
 
-> **상태:** 🟡 **Phase 2 완료 · Phase 3(RAG) 미착수** · 2026-09-02 기준
+> **상태:** 🟡 **Phase 2 완료 · Phase 3(RAG) 미착수** · 2026-09-07 기준
 >
-> 🔴 **가장 큰 미결: 난이도 축이 재현되지 않는다.** 지금 DB 에는 하454·중432·상246 이
-> 들어 있는데, 같은 원본 자료를 현재 코드로 다시 적재하면 **상이 0건**이 된다.
-> DB 를 비우면 되돌릴 수 없다.
-> → [docs/research/aihub-data-measurement-2026-08-31.md](docs/research/aihub-data-measurement-2026-08-31.md)
+> 🟢 **지금 DB 는 이제 재현된다** (2026-09-07). 난이도가 원본의 어느 필드에서 왔는지
+> 12개 필드를 전수로 대조했는데 **어디서도 오지 않았다** — 사람이 손으로 정한 값이다.
+> 그래서 유도 대신 **기록**했다: `data/difficulty-overrides.csv` 1,132줄.
+> 재적재하면 지금 DB 와 **99.8%** 일치한다.
+>
+> 🟢 **난이도 고리가 이제 돈다** (2026-09-09 · **2026-09-10 재적재로 DB 에 반영됨**).
+> 챕터를 「유형 331개」에서 **「대단원 8개」**로 묶었다. 예전에는 챕터의 60% 가 문제 3개
+> 이하라 난이도 조정이 시작조차 못 했는데, 이제 가장 작은 챕터도 **75문제**다.
+> 난이도 재현율 **99.8%**(1,130/1,132) — 예측대로다.
+> → [재적재 실측](docs/research/reload-result-2026-09-10.md)
+>
+> 🔴 **남은 미결: 난이도 축을 «무엇으로» 정할 것인가.** 난이도가 사실상 단원별로 몰려 있어
+> (챕터×난이도) 24칸 중 **7칸이 비어 있다.** 지금은 폴백으로 고장을 막아 뒀다.
+> → [난이도의 출처](docs/research/difficulty-origin-2026-09-07.md) ·
+> [챕터 묶기](docs/research/chapter-granularity-2026-09-09.md)
 
 ## 개요
 
@@ -153,13 +164,29 @@ Oracle 은 첫 기동에 수 분 걸린다 — `docker logs -f oracle23ai` 로 �
 
 첫 기동 때 `DataLoader` 가 AI Hub JSON 을 읽어 `PROBLEMS` 표를 채운다.
 🔴 **경로를 `.env` 에 넣지 않으면 문제 0건으로 뜬다.** 에러가 아니라 경고 로그만 남으므로
-`[DataLoader] 적재 완료 - 삽입: N개` 줄의 N 을 반드시 확인한다.
+적재 결과 줄(`대상 N건 중 M건 저장 · 챕터 K개`)의 숫자를 반드시 확인한다.
+챕터 기준을 바꿨다면 표를 먼저 비워야 한다 —
+[DATA_CONTRACT.md](docs/DATA_CONTRACT.md) §5 「재적재 절차」.
 
 ### 4. 검사
 
 ```bash
-./gradlew test            # 🎯 인프라 없이 도는 검사 15건 (채점 정규화)
+./gradlew test            # 🎯 인프라 없이 도는 검사 19건 (채점 정규화 15 · 난이도 폴백 4)
 ```
+
+### JDK 21 이 없는 PC 에서 (Docker 로 빌드)
+
+```bash
+docker run --rm   -v /c/intellij_workspace/ailang://app   -v ailang-gradle-cache://home/gradle/.gradle   -v ailang-build://app/build   -v ailang-projcache://app/.gradle   -w //app gradle:8.14-jdk21   gradle compileJava test --tests '*AnswerNormalizerTest*' --tests '*DifficultyFallbackTest*'
+```
+
+🔴 **`build` 와 `.gradle` 을 «반드시» 볼륨으로 뺀다.** 이 두 폴더를 Windows 바인드 마운트에
+두면 Gradle 이 자기가 만든 디렉터리를 다시 못 읽어 `Cannot access output property ...
+Could not read directory path` 로 죽는다. 매번 `rm -rf build .gradle` 로 넘길 수는 있지만
+증분 빌드가 통째로 사라져 3분씩 걸린다. 볼륨으로 빼면 재실행이 `UP-TO-DATE` 로 끝난다.
+
+⚠️ `--tests` 필터를 **빼지 말 것.** 필터 없이 `test` 를 돌리면 Oracle·Redis 가 필요한
+Spring 컨텍스트 검사까지 걸려 응답 없이 멈춘다.
 
 Java 21 · Spring Boot 4.0.2 · Gradle · Python 3.11 · FastAPI.
 스택 선택 근거: [docs/rules/stack-decision.md](docs/rules/stack-decision.md)

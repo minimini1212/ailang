@@ -26,6 +26,7 @@ import com.example.ailang.domain.user.exception.UserNotFoundException;
 import com.example.ailang.domain.user.repository.UserRepository;
 import com.example.ailang.global.client.AiServerClient;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +36,7 @@ import java.util.List;
 /**
  * 문제 서비스 구현체
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -57,12 +59,31 @@ public class ProblemServiceImpl implements ProblemService {
                 .orElse(null);
 
         // 통계가 없으면 초기 난이도 MEDIUM, 있으면 현재 난이도 사용
-        String difficulty = stats != null ? stats.getCurrentDifficulty().name() : "MEDIUM";
+        Difficulty wanted = stats != null ? stats.getCurrentDifficulty() : Difficulty.MEDIUM;
 
-        // 현재 난이도에 맞는 문제를 랜덤으로 1개 조회
-        Problem problem = problemRepository
-                .findRandomByChapterIdAndDifficulty(chapterId, difficulty)
-                .orElseThrow(ProblemNotFoundException::new);
+        // 🔴 그 난이도가 이 챕터에 «없을 수 있다». 실측(2026-09-09)에서 24칸 중 7칸이 비었다 —
+        //    난이도가 단원별로 몰려 있어서다(입체도형은 전부 상, 정수와 유리수는 전부 하).
+        //    예전에는 여기서 404 가 났다. 학생이 그 단원을 처음 열면 통계가 없어
+        //    중(MEDIUM) 으로 찾는데 0건이기 때문이다.
+        //    ⚠️ 난이도를 «바꿔치기» 하는 것이 아니다. 응답에는 실제로 준 문제의 난이도가
+        //       그대로 실려 나가므로 화면이 학생에게 사실대로 보여 줄 수 있다.
+        Problem problem = null;
+        for (Difficulty candidate : DifficultyFallback.order(wanted)) {
+            problem = problemRepository
+                    .findRandomByChapterIdAndDifficulty(chapterId, candidate.name())
+                    .orElse(null);
+            if (problem != null) {
+                if (candidate != wanted) {
+                    log.info("[맞춤문제] 챕터 {} 에 {} 문제가 없어 {} 로 대신합니다",
+                            chapterId, wanted, candidate);
+                }
+                break;
+            }
+        }
+        // 세 난이도 모두 0건이면 그 챕터에 기출문제가 진짜로 없는 것이다.
+        if (problem == null) {
+            throw new ProblemNotFoundException();
+        }
 
         return ProblemResponse.of(problem, stats);
     }
@@ -175,11 +196,19 @@ public class ProblemServiceImpl implements ProblemService {
     public ConceptResponse getConcept(Long problemId, String grade) {
         Problem problem = problemRepository.findById(problemId).orElseThrow(ProblemNotFoundException::new);
 
-        // 문제의 챕터명 + 문제 본문 + 유저 학년을 FastAPI에 전달해 개념 설명 요청
+        // 문제의 단원명(+유형) + 문제 본문 + 유저 학년을 FastAPI에 전달해 개념 설명 요청
+        //
+        // 🔴 유형을 «반드시» 붙인다. 2026-09-09 에 챕터를 유형 331개에서 대단원 8개로
+        //    묶었는데, 챕터명만 보내면 예전에 「맞꼭지각(1)」이 가던 자리에 「기본 도형」이
+        //    간다 — 개념 설명이 그만큼 뭉뚱그려진다. 유형은 Problem.topic 에 남겨 뒀다.
+        String topic = problem.getTopic();
         String chapterTitle = problem.getChapter().getTitle();
+        String context = (topic == null || topic.isBlank())
+                ? chapterTitle
+                : chapterTitle + " · " + topic;
 
-        // FastAPI에 문제 본문 + 학년 + 챕터명 전달 → Gemini 개념 설명 생성
-        String concept = aiServerClient.requestConcept(problem.getQuestion(), grade, chapterTitle);
+        // FastAPI에 문제 본문 + 학년 + 단원·유형 전달 → Gemini 개념 설명 생성
+        String concept = aiServerClient.requestConcept(problem.getQuestion(), grade, context);
 
         return ConceptResponse.of(concept);
     }

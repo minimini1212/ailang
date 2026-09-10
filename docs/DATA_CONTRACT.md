@@ -79,15 +79,25 @@ OAuth2 경로(`CustomOAuth2UserService`)는 받지 않는다. `user.getGrade().n
 | --- | --- | --- |
 | `ID` | NUMBER (PK) | `CHAPTERS_SEQ` |
 | `GRADE` | VARCHAR2(20) NOT NULL | 🎯 **학년은 챕터가 들고 있다** |
-| `TITLE` | VARCHAR2(100) NOT NULL | 「분수」, 「방정식과 부등식」 |
-| `DESCRIPTION` | VARCHAR2(500) | ⚠️ `DataLoader` 는 이 값을 안 채운다 (항상 null) |
-| `ORDER_NUM` | NUMBER NOT NULL | 같은 학년 안에서의 표시 순서 |
+| `TITLE` | VARCHAR2(100) NOT NULL | 🔄 **대단원명**. 「소인수분해」, 「기본 도형」 |
+| `DESCRIPTION` | VARCHAR2(500) | 🔄 「1학기 · 도형과 측정」. 원본의 학기·영역만 쓴다 |
+| `ORDER_NUM` | NUMBER NOT NULL | 같은 학년 안에서의 표시 순서 = `question_unit`(1~8) |
 
-⚠️ **`(GRADE, TITLE)` 에 유니크 제약이 없다.** `DataLoader` 는 캐시 + `findByGradeAndTitle`
-로 중복을 피하지만, 그건 **한 프로세스 안에서만** 통하는 보호다.
+🔄 **2026-09-09: 챕터는 «유형» 이 아니라 «대단원» 이다.** 예전에는 원본의
+`question_topic_name`(「맞꼭지각(1)」 같은 문제 유형)을 그대로 챕터로 써서 **331개**가 됐고,
+그중 **200개(60%)가 문제 3개 이하**였다. 난이도 조정은 **챕터당 3문제 이상**이라야
+시작하므로 **그 챕터들은 난이도가 영원히 안 움직였다.**
 
-⚠️ **`ORDER_NUM` 은 사실상 순서가 아니다.** 실측(2026-08-31)에서 챕터가 331개인데
-원본의 `question_unit` 값은 **8종뿐**이라 한 순번에 챕터 수십 개가 몰린다.
+이제 `question_unit`(01~08)으로 묶어 **중1 기준 챕터 8개 · 챕터당 76~246문제**다.
+유형은 버리지 않고 `PROBLEMS.TOPIC` 으로 옮겼다.
+근거: [`research/chapter-granularity-2026-09-09.md`](research/chapter-granularity-2026-09-09.md)
+
+🔄 **`(GRADE, TITLE)` 에 유니크 제약을 걸었다** (`UK_CHAPTERS_GRADE_TITLE`).
+적재는 조회 후 없으면 생성(read-then-write)이라 코드만으로는 중복을 못 막는다 —
+챕터가 갈리면 문제도 통계도 갈린다.
+
+🔄 **`ORDER_NUM` 이 이제 실제로 순서다.** 챕터 8개에 순번 1~8 이 하나씩 대응한다.
+예전에는 챕터 331개가 순번 8종을 나눠 가져 한 순번에 수십 개가 몰렸다.
 
 ### PROBLEMS
 
@@ -99,9 +109,27 @@ OAuth2 경로(`CustomOAuth2UserService`)는 받지 않는다. `user.getGrade().n
 | `PROBLEM_TYPE` | VARCHAR2(20) NOT NULL | `MULTIPLE_CHOICE` / `SHORT_ANSWER` |
 | `QUESTION` | CLOB NOT NULL | 문제 본문 |
 | `OPTIONS` | VARCHAR2(**1000**) | 객관식 보기 JSON 배열. 단답형이면 null |
-| `ANSWER` | VARCHAR2(200) NOT NULL | 🔴 절대 제출 전에 응답에 실리지 않는다 |
+| `ANSWER` | VARCHAR2(200) NOT NULL | 🔴 절대 제출 전에 응답에 실리지 않는다 · 🔴 **폭이 모자란다 — 아래** |
 | `EXPLANATION` | CLOB NOT NULL | 해설 |
 | `SOURCE_TYPE` | VARCHAR2(10) NOT NULL DEFAULT `REAL` | 🔴 `REAL`(기출) / `AI`(생성) |
+| `TOPIC` | VARCHAR2(200) | 🔄 **신설.** 문제 유형명(「맞꼭지각(1)」). AI 생성이면 null |
+| `SOURCE_ID` | VARCHAR2(50) UNIQUE | 🔄 **신설.** 원본 AI Hub 문제 id. AI 생성이면 null |
+
+🔄 **2026-09-09: `TOPIC` 과 `SOURCE_ID` 를 넣었다.**
+- `TOPIC` — 챕터가 유형 331개에서 대단원 8개로 넓어졌다. 유형을 여기 안 남기면 331종의
+  정보가 통째로 사라진다. 🎯 개념 설명 요청에 **`단원 · 유형` 을 함께** 보내야 예전과
+  같은 정확도가 나온다 — 챕터명만 보내면 「기본 도형」처럼 뭉뚱그려진다.
+- `SOURCE_ID` — 이게 없어서 적재가 **전부 아니면 전무**였다. 절반만 들어간 상태에서
+  나머지를 채우거나 새 학년 자료를 덧붙일 수 없었다. `UNIQUE` 라 같은 원본이 두 번
+  들어오지 않는다 (Oracle 은 `NULL` 을 여러 개 허용하므로 AI 문제는 걸리지 않는다).
+
+🔴 **`ANSWER` 의 200자는 «기출문제에서 이미» 넘치고 있다** (📏 2026-09-10 실측).
+원본 `answer_bbox` 의 `type=="answer"` 칸에 **정답과 풀이가 함께** 들어 있는 건이 있어,
+정답 글자수가 213~1,106자가 된다. 그 **20건은 저장에서 터져 조용히 버려진다** —
+저장된 1,132건의 최대가 190자이고 빠진 20건의 최소가 213자로 **정확히 갈린다.**
+⚠️ 빠지는 것이 대부분 **서술형·표가 있는 문제**라 자료가 치우친다.
+🧭 어떻게 담을지는 채점 방식과 얽힌 **사용자 결정**이다
+([`research/reload-result-2026-09-10.md`](research/reload-result-2026-09-10.md) §2).
 
 🔴 **`OPTIONS` 의 1000자는 AI 생성 문제에서 실제로 넘칠 수 있다.** LaTeX 가 섞인 보기 4개는
 `["$\\frac{3}{4}$", ...]` 처럼 이스케이프까지 붙어 길어진다. 넘치면 `DataException` → 500.
@@ -201,30 +229,48 @@ CHAPTERS 1 ─── N PROBLEMS
 | 원본 | → | 우리 값 | 규칙 |
 | --- | --- | --- | --- |
 | `question_grade` | → | `Grade` | `E3`~`E6`→`ELEM_*`, `M1`~`M3`→`MIDDLE_*`, `H1`→`HIGH_1`. 모르면 건너뜀 |
-| `question_topic_name` | → | `CHAPTERS.TITLE` | 없으면 챕터를 만든다 |
-| `question_unit` | → | `CHAPTERS.ORDER_NUM` | 숫자가 아니면 맨 뒤로 보낸다(문제는 살린다). ⚠️ 실측상 값이 8종뿐인데 챕터는 331개라 순서가 사실상 안 정해진다 |
-| `question_step` | → | `Difficulty` | `기본`→LOW, `표준`→MEDIUM, `심화`→HIGH · 🔴 아래 |
-| `question_difficulty` (1~5) | → | `Difficulty` | `question_step` 이 없을 때만. ≤2 LOW, ≤3 MEDIUM, 그 외 HIGH · 🔴 아래 |
+| **`question_unit`** | → | `CHAPTERS` | 🔄 **챕터는 대단원이다.** 「학년코드-단원번호」로 묶는다 (`M1-03`) |
+| `data/chapter-titles.csv` | → | `CHAPTERS.TITLE` | 🔄 표에서 이름을 가져온다. 없으면 「(이름 미등록) NN단원」 + 로그 |
+| `question_term`·`question_sector2` | → | `CHAPTERS.DESCRIPTION` | 🔄 「1학기 · 도형과 측정」. 둘 다 없으면 null |
+| `question_unit` | → | `CHAPTERS.ORDER_NUM` | 숫자가 아니면 맨 뒤로 보낸다(문제는 살린다) |
+| `question_topic_name` | → | `PROBLEMS.TOPIC` | 🔄 **유형명.** 예전에는 이 값이 챕터 이름이었다 |
+| `id` | → | `PROBLEMS.SOURCE_ID` | 🔄 원본 AI Hub id |
+| **`id`** | → | `Difficulty` | 🔄 **먼저 본다.** `data/difficulty-overrides.csv` 에 그 id 가 있으면 그 값을 쓴다 · 🔴 아래 |
+| `question_step` | → | `Difficulty` | 위 표에 없을 때만. `기본`→LOW, `표준`→MEDIUM, `심화`→HIGH |
+| `question_difficulty` (1~5) | → | `Difficulty` | 위 둘 다 없을 때만. ≤2 LOW, ≤3 MEDIUM, 그 외 HIGH |
 | `question_type1` | → | `ProblemType` | `선택형`→MULTIPLE_CHOICE, 그 외 SHORT_ANSWER |
 | `OCR_info[0].question_text` | → | `QUESTION` | 보기가 이 안에 들어 있다 |
 | `answer_bbox` 중 `type=="answer"` | → | `ANSWER` | 🔄 **전부** 쉼표로 이어 붙인다(복수정답 6건). 비면 건너뜀 |
 | `answer_info[0].answer_text` | → | `EXPLANATION` | |
 | (고정) | → | `SOURCE_TYPE` | 항상 `REAL` |
 
-### 🔴 이 난이도 매핑은 실제 자료와 맞지 않는다 (2026-08-31 실측)
+### 🔴 난이도는 원본에서 «유도되지 않는다» — 그래서 기록한다
 
-원본에 있는 `question_step` 값은 **`기본`(935) · `실생활응용`(217) 둘뿐**이다.
-`표준`·`심화` 는 **한 건도 없다** — 위 표의 그 두 줄은 한 번도 쓰이지 않는다.
-그리고 `question_difficulty` 의 최댓값이 **3** 이라 `> 3` 조건인 HIGH 도 안 나온다.
+원본의 `question_step` 값은 **`기본`(935) · `실생활응용`(217) 둘뿐**이라 `표준`·`심화`
+두 줄은 한 번도 안 쓰이고, `question_difficulty` 최댓값이 **3** 이라 `> 3` 조건인 HIGH 도
+안 나온다. 2026-09-07 에 `question_info` 의 **12개 필드 전부와 그 조합**을 DB 난이도와
+대조했는데 어느 것도 설명하지 못했다 (최고 `question_unit` 86.4%, 그마저 단원 안의
+분화는 **모든 필드가 다수결 기준선과 정확히 같아** 정보량이 0 이었다).
 
-| | 하 | 중 | 상 |
-| --- | --- | --- | --- |
-| 지금 DB | 454 | 432 | 246 |
-| 이 매핑이 만들 것 | **1,131** | **21** | **0** |
+🎯 **유도할 수 없다고 재현까지 못 하는 것은 아니다.** 「원본 id → 난이도」를
+`src/main/resources/data/difficulty-overrides.csv` 에 1,132줄로 **기록**하고,
+적재할 때 이 표를 **가장 먼저** 본다.
 
-🔴 **즉 지금 DB 는 이 코드로 재현할 수 없다.** 비우면 되돌릴 수 없고, 재적재하면
-난이도 축이 사실상 사라진다. 전말과 근거:
-[`research/aihub-data-measurement-2026-08-31.md`](research/aihub-data-measurement-2026-08-31.md) §1
+| | 하 | 중 | 상 | 지금 DB 와 일치 |
+| --- | --- | --- | --- | --- |
+| 지금 DB | 454 | 432 | 246 | — |
+| **스냅샷 사용 (현재 동작)** | 472 | 436 | 244 | **99.8%** (1130/1132) |
+| 스냅샷 없이 원본 필드만 | **1,131** | **21** | **0** | 41.0% |
+
+못 맞히는 2건은 **본문이 완전히 같은데 난이도가 다른** 문제다 — 구분하는 것이 그림이라
+텍스트로는 짚을 수 없다.
+
+🔴 **이 파일은 «규칙» 이 아니라 «기록» 이다.** 새 학년 자료에는 그 id 가 없어 아래
+매핑으로 떨어지고, 그러면 **상(HIGH) 이 한 건도 안 나온다.** 적재 로그가 몇 건이
+스냅샷에서·몇 건이 매핑에서 왔는지 알려 준다.
+파일이 아예 없어도 적재는 돈다(경고만 남는다).
+
+전말·후보 비교: [`research/difficulty-origin-2026-09-07.md`](research/difficulty-origin-2026-09-07.md)
 
 **멱등성**: 보호는 `countBySourceType(REAL) > 0` 이다.
 🔄 **2026-09-02 정정.** 예전에는 전체 건수(`count()`)를 봤는데, AI 모의문제가 같은 표에
@@ -233,6 +279,30 @@ CHAPTERS 1 ─── N PROBLEMS
 🔴 **여전히 전부 아니면 전무다.** 절반만 들어간 상태에서 나머지를 채울 수 없고, 새 학년
 자료를 추가할 수도 없다. 진짜 키는 AI Hub 의 `id` 인데 `PROBLEMS` 에 그 컬럼이 없다
 ([`../TODOS.md`](../TODOS.md) 참고).
+
+### 🔴 재적재 절차 — 챕터 기준이 바뀌면 반드시 거쳐야 한다
+
+챕터 기준을 바꾸면 기존 `CHAPTERS` 331행과 그것을 가리키는 모든 행이 **뜻을 잃는다.**
+`DataLoader` 는 기출문제가 이미 있으면 건너뛰므로, **표를 비워야 새 기준이 적용된다.**
+
+```sql
+-- ⚠️ 지우는 순서가 중요하다 (자식 → 부모). 실행 전에 무엇이 사라지는지 세어 볼 것.
+SELECT COUNT(*) FROM USER_PROBLEM_HISTORY;   -- 학생 풀이 이력
+SELECT COUNT(*) FROM USER_CHAPTER_STATS;     -- 챕터별 정답률·현재 난이도
+
+DELETE FROM USER_PROBLEM_HISTORY;
+DELETE FROM USER_CHAPTER_STATS;
+DELETE FROM PROBLEMS;
+DELETE FROM CHAPTERS;
+COMMIT;
+```
+
+🔴 **학생의 학습 기록이 사라진다.** 챕터가 달라지면 「어느 챕터에서 몇 문제를 맞혔나」가
+가리킬 곳을 잃기 때문에, 남겨 두면 통계가 **틀린 챕터에 붙는다.**
+⚠️ 운영 데이터가 생긴 뒤에는 이 방법을 쓸 수 없다 — 마이그레이션 도구가 필요하다
+(TODOS 8절 「스키마 마이그레이션 도구」).
+
+지운 뒤 앱을 다시 띄우면 적재가 돌고, 로그에 챕터 수·난이도 출처·이름 못 찾은 단원이 남는다.
 
 **실패 분류**: 🔄 사유 6종으로 나눈다 (`LoadOutcome`) — 저장 · 답안 파일 없음 ·
 정답 자리 비어 있음 · 처음 보는 학년 코드 · 필수 필드 없음 · 처리 중 오류.

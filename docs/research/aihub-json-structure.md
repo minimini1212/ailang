@@ -51,7 +51,7 @@ problem-dir/          답안-dir/
   "question_info": [{
     "question_grade":      "M1",      → 학년
     "question_unit":       "3",       → 챕터 표시 순서
-    "question_topic_name": "일차방정식", → 챕터 이름
+    "question_topic_name": "일차방정식", → 유형 이름 (🔄 아래 각주)
     "question_type1":      "선택형",   → 객관식/단답형
     "question_step":       "표준",     → 난이도 (1순위)
     "question_difficulty":  3          → 난이도 (2순위, 1~5 숫자)
@@ -142,3 +142,18 @@ problem-dir/          답안-dir/
 - 적재 매핑 계약: [`../DATA_CONTRACT.md`](../DATA_CONTRACT.md) §5
 - 적재 코드: `src/main/java/com/example/ailang/global/loader/DataLoader.java`
 - 경로 설정: [`../../.env.example`](../../.env.example) ⑦
+
+
+---
+
+## 🔄 후속 각주 (2026-09-09)
+
+> ⚠️ 이 문서는 **코드에서 유추한 초판(2026-08-27)** 이다. 본문은 그대로 두고 달라진 것만 적는다.
+
+| 이 문서의 서술 | 지금 |
+| --- | --- |
+| `question_topic_name` → 챕터 이름 | 🔄 **유형 이름**이다. `PROBLEMS.TOPIC` 으로 들어간다. 챕터는 `question_unit`(대단원 8개) 기준이다 |
+| `question_step` → 난이도 | 🔄 **난이도는 원본에서 유도되지 않는다.** 기록해 둔 스냅샷을 먼저 본다 |
+
+근거: [`chapter-granularity-2026-09-09.md`](chapter-granularity-2026-09-09.md) ·
+[`difficulty-origin-2026-09-07.md`](difficulty-origin-2026-09-07.md)

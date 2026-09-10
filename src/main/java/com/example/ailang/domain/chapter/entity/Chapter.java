@@ -6,13 +6,28 @@ import jakarta.persistence.*;
 import lombok.*;
 
 /**
- * 챕터(단원) 엔티티
- * - 학년(grade)별로 수학 단원을 나타냄 (예: 초3 - 분수, 중1 - 방정식)
- * - orderNum으로 챕터 표시 순서를 관리
- * - LearningContent(소단원), Problem(문제)의 부모 엔티티
+ * 챕터(대단원) 엔티티
+ * - 학년(grade)별로 수학 대단원을 나타냄 (예: 중1 - 소인수분해, 기본 도형)
+ * - orderNum 으로 챕터 표시 순서를 관리 (원본의 question_unit = 1~8)
+ * - Problem(문제)의 부모 엔티티
+ *
+ * <p>🔴 <b>2026-09-09 에 «유형» 에서 «대단원» 으로 바뀌었다.</b> 예전에는 원본의
+ * {@code question_topic_name}(「맞꼭지각(1)」 같은 문제 유형)을 그대로 챕터로 썼다.
+ * 그래서 챕터가 331개가 되고 그중 200개(60%)가 문제 3개 이하였는데,
+ * 난이도 조정은 <b>챕터당 3문제 이상</b> 풀어야 시작하므로
+ * <b>그 챕터들은 난이도가 영원히 안 움직였다.</b>
+ * 유형은 사라지지 않고 {@code Problem.topic} 으로 옮겨 갔다.
+ * 근거: {@code docs/research/chapter-granularity-2026-09-09.md}
  */
 @Entity
-@Table(name = "CHAPTERS")
+@Table(
+        name = "CHAPTERS",
+        // 🔴 같은 학년에 같은 이름의 챕터가 둘 있으면 문제가 갈려 담기고, 통계도 갈린다.
+        //    적재는 조회 후 없으면 생성(read-then-write)이라 코드만으로는 못 막는다.
+        uniqueConstraints = @UniqueConstraint(
+                name = "UK_CHAPTERS_GRADE_TITLE",
+                columnNames = {"grade", "title"})
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder

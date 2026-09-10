@@ -105,8 +105,13 @@ public class DataLoader implements CommandLineRunner {
         Map<String, AnswerJson>  answers  = loadJsonDir(answerDir,  AnswerJson.class);
         log.info("[DataLoader] 문제 {}개, 답안 {}개 로딩 완료", problems.size(), answers.size());
 
-        // 챕터 캐시 (앱 실행 중 DB 중복 조회 방지)
+        // 챕터 캐시 (앱 실행 중 DB 중복 조회 방지). 키는 「학년코드-단원번호」다.
         Map<String, Chapter> chapterCache = new HashMap<>();
+
+        // 🔴 대단원에는 원본에 «이름» 이 없다. 표에서 가져오고, 없으면 지어내지 않는다.
+        //    (근거: ChapterTitles 주석 · docs/research/chapter-granularity-2026-09-09.md)
+        ChapterTitles titles = ChapterTitles.load();
+        int unnamedChapters = 0;
 
         // 🔴 실패를 사유별로 센다. 예전에는 전부 skipped 하나였고, 그러면
         //    「몇 건 안 들어왔다」는 알아도 무엇을 고쳐야 하는지는 알 수 없었다.
@@ -114,6 +119,11 @@ public class DataLoader implements CommandLineRunner {
         // 난이도를 점수로 떨어뜨린 건수 — STEP_MAP 에 없는 값이 얼마나 되는지 보이게 한다
         int steppedByScore = 0;
         int multiAnswer = 0;
+
+        // 🔴 난이도는 원본에서 유도되지 않는다. 기록해 둔 스냅샷을 먼저 본다.
+        //    (근거: DifficultyOverrides 주석 · docs/research/difficulty-origin-2026-09-07.md)
+        DifficultyOverrides overrides = DifficultyOverrides.load();
+        int fromSnapshot = 0;
 
         for (Map.Entry<String, ProblemJson> entry : problems.entrySet()) {
             String      id   = entry.getKey();
@@ -166,14 +176,28 @@ public class DataLoader implements CommandLineRunner {
                 }
                 String answer = String.join(",", answers2);
 
-                // 챕터 조회 또는 생성
-                Chapter chapter = getOrCreateChapter(chapterCache, grade, info);
+                // 챕터(대단원) 조회 또는 생성
+                int before = chapterCache.size();
+                Chapter chapter = getOrCreateChapter(chapterCache, grade, info, titles);
+                if (chapterCache.size() > before && chapter.getTitle().startsWith(UNNAMED_PREFIX)) {
+                    unnamedChapters++;
+                }
 
-                // 난이도 변환 (question_step 우선, 없으면 question_difficulty 점수 기반)
-                Difficulty difficulty = STEP_MAP.get(info.questionStep);
-                if (difficulty == null) {
-                    difficulty = difficultyFromScore(info.questionDifficulty);
-                    steppedByScore++;
+                // 난이도 결정 — ① 기록해 둔 스냅샷 ② 없으면 원본 필드로 유도
+                //
+                // 🔴 ①이 먼저인 이유: 원본 자료로는 이 난이도를 만들 수 없다.
+                //    2026-09-07 에 모든 필드를 대조했고, 최고 설명력이 86.4%(question_unit)
+                //    였으며 단원 안의 분화는 어떤 필드로도 설명되지 않았다.
+                //    ②만 쓰면 상(HIGH) 이 **한 건도 안 나온다** — 진단 테스트가 깨진다.
+                Difficulty difficulty = overrides.get(id);
+                if (difficulty != null) {
+                    fromSnapshot++;
+                } else {
+                    difficulty = STEP_MAP.get(info.questionStep);
+                    if (difficulty == null) {
+                        difficulty = difficultyFromScore(info.questionDifficulty);
+                        steppedByScore++;
+                    }
                 }
 
                 // 문제 유형 변환
@@ -189,6 +213,11 @@ public class DataLoader implements CommandLineRunner {
                         .answer(answer)
                         .explanation(explanation)
                         .sourceType(SourceType.REAL)
+                        // 🔴 챕터가 대단원으로 넓어진 만큼 «유형» 을 여기 남긴다.
+                        //    안 남기면 331종의 정보가 통째로 사라진다.
+                        .topic(info.questionTopicName)
+                        // 🔴 원본 id. 이게 없어서 적재가 «전부 아니면 전무» 였다.
+                        .sourceId(id)
                         .build());
 
                 count(tally, LoadOutcome.INSERTED);
@@ -203,7 +232,8 @@ public class DataLoader implements CommandLineRunner {
             }
         }
 
-        report(tally, problems.size(), chapterCache.size(), steppedByScore, multiAnswer);
+        report(tally, problems.size(), chapterCache.size(), steppedByScore, multiAnswer,
+                fromSnapshot, overrides.size(), unnamedChapters, titles.size());
     }
 
     private static void count(EnumMap<LoadOutcome, Integer> tally, LoadOutcome outcome) {
@@ -212,7 +242,9 @@ public class DataLoader implements CommandLineRunner {
 
     /** 무엇이 들어왔고 무엇이 왜 빠졌는지 한눈에 남긴다. */
     private void report(EnumMap<LoadOutcome, Integer> tally, int total, int chapters,
-                        int steppedByScore, int multiAnswer) {
+                        int steppedByScore, int multiAnswer,
+                        int fromSnapshot, int snapshotSize,
+                        int unnamedChapters, int titleTableSize) {
         int inserted = tally.getOrDefault(LoadOutcome.INSERTED, 0);
         log.info("[DataLoader] ── 적재 결과 ──────────────────────────");
         log.info("[DataLoader] 대상 {}건 중 {}건 저장 · 챕터 {}개", total, inserted, chapters);
@@ -227,6 +259,23 @@ public class DataLoader implements CommandLineRunner {
         }
         if (multiAnswer > 0) {
             log.info("[DataLoader]   정답이 여러 개인 문제 {}건 (쉼표로 이어 저장)", multiAnswer);
+        }
+        // 난이도가 어디서 왔는지 — 🎯 이게 안 보이면 「왜 상(HIGH) 이 0건이지」를 못 찾는다
+        log.info("[DataLoader]   난이도: 기록된 스냅샷 {}건 / 원본 필드로 유도 {}건",
+                fromSnapshot, inserted - fromSnapshot);
+        if (inserted > fromSnapshot) {
+            int derived = inserted - fromSnapshot;
+            log.warn("[DataLoader]   ⚠️ 스냅샷에 없는 문제 {}건은 원본 필드로 정했습니다. "
+                    + "이 자료에는 「표준」·「심화」가 없어 상(HIGH) 이 안 나옵니다.", derived);
+        }
+        if (snapshotSize > fromSnapshot) {
+            log.info("[DataLoader]   스냅샷 {}건 중 {}건만 쓰였습니다 (나머지는 이 자료에 없는 문제)",
+                    snapshotSize, fromSnapshot);
+        }
+        // 챕터 이름을 못 찾은 단원 — 🎯 이게 안 보이면 「(이름 미등록)」이 학생 화면에 뜬다
+        if (unnamedChapters > 0) {
+            log.warn("[DataLoader]   🔴 이름을 못 찾은 대단원 {}개 (이름표 {}건). "
+                    + "data/chapter-titles.csv 를 채우세요.", unnamedChapters, titleTableSize);
         }
         if (steppedByScore > 0) {
             // ⚠️ 이 숫자가 크면 question_step 매핑이 실제 자료와 안 맞는다는 뜻이다.
@@ -312,31 +361,73 @@ public class DataLoader implements CommandLineRunner {
                 .toList();
     }
 
+    /** 이름표에 없는 단원의 제목 앞머리. 🔴 그럴듯한 이름을 «지어내지» 않는다. */
+    private static final String UNNAMED_PREFIX = "(이름 미등록) ";
+
     /**
-     * 챕터 캐시에서 조회, 없으면 DB 조회 후 없으면 생성.
+     * 대단원 챕터를 조회하거나 만든다.
      *
-     * <p>⚠️ {@code orderNum} 은 <b>그 챕터에서 처음 만난 문제</b>의 {@code question_unit} 으로
-     * 정해진다. 실측(2026-08-31)에서 챕터는 331개인데 unit 값은 8종뿐이라
-     * <b>한 순번에 챕터 수십 개가 몰린다</b> — 표시 순서가 사실상 정해지지 않는다.
-     * 파일을 이름순으로 읽게 해서 «실행할 때마다 달라지는» 것은 없앴지만,
-     * 순서 자체를 무엇으로 정할지는 결정 대기 항목이다 ({@code TODOS.md} 0절).
+     * <p>🔴 <b>2026-09-09: 챕터 기준이 «유형» 에서 «대단원» 으로 바뀌었다.</b>
+     * 예전에는 {@code question_topic_name}(「맞꼭지각(1)」)을 챕터로 썼다. 그러면
+     * 챕터가 331개가 되고 그중 200개(60%)가 문제 3개 이하인데, 난이도 조정은
+     * <b>챕터당 3문제 이상</b>이라야 시작하므로 그 챕터들은 난이도가 영원히 안 움직였다.
+     * 실사용 통계 40건 중 3문제 이상 푼 챕터가 <b>1개</b>뿐이었다.
+     *
+     * <p>이제 {@code question_unit}(01~08)으로 묶는다. 실측상 이 값은
+     * (학년·학기·영역·{@code question_topic} 코드 앞 4자리)와 <b>1:1</b> 이라 대단원이 맞다.
+     * 챕터당 76~246문제가 되어 난이도 고리가 실제로 돈다.
+     *
+     * <p>🎯 부수 효과로 {@code orderNum} 문제도 사라진다. 예전에는 챕터 331개가
+     * 순번 8종을 나눠 가져 표시 순서가 사실상 안 정해졌는데, 이제 챕터 8개에 순번 1~8 이다.
      */
     private Chapter getOrCreateChapter(Map<String, Chapter> cache,
                                        Grade grade,
-                                       ProblemJson.QuestionInfo info) {
-        String key = grade.name() + "_" + info.questionTopicName;
-        return cache.computeIfAbsent(key, k ->
-                chapterRepository.findByGradeAndTitle(grade, info.questionTopicName)
-                        .orElseGet(() -> {
-                            Chapter newChapter = chapterRepository.save(Chapter.builder()
-                                    .grade(grade)
-                                    .title(info.questionTopicName)
-                                    .orderNum(parseUnit(info.questionUnit))
-                                    .build());
-                            log.info("[DataLoader] 챕터 생성: {} - {}", grade, info.questionTopicName);
-                            return newChapter;
-                        })
-        );
+                                       ProblemJson.QuestionInfo info,
+                                       ChapterTitles titles) {
+        String key = ChapterTitles.key(info.questionGrade, info.questionUnit);
+        return cache.computeIfAbsent(key, k -> {
+            String registered = titles.get(k);
+            String title = registered != null
+                    ? registered
+                    : UNNAMED_PREFIX + info.questionUnit + "단원";
+            if (registered == null) {
+                log.warn("[DataLoader] 단원 이름표에 없습니다: {} - 제목을 「{}」 로 둡니다", k, title);
+            }
+            return chapterRepository.findByGradeAndTitle(grade, title)
+                    .orElseGet(() -> {
+                        Chapter created = chapterRepository.save(Chapter.builder()
+                                .grade(grade)
+                                .title(title)
+                                .description(describe(info))
+                                .orderNum(parseUnit(info.questionUnit))
+                                .build());
+                        log.info("[DataLoader] 챕터 생성: {} {} - {}", grade, info.questionUnit, title);
+                        return created;
+                    });
+        });
+    }
+
+    /**
+     * 챕터 설명문. 원본에 있는 값만 쓴다 — 「1학기 · 도형과 측정」.
+     *
+     * <p>실측상 {@code question_unit} 하나에 학기·영역이 각각 하나씩만 대응하므로
+     * 이 문장은 그 단원의 모든 문제에서 같다.
+     */
+    private String describe(ProblemJson.QuestionInfo info) {
+        if (info.questionTerm == null && info.questionSector2 == null) {
+            return null;   // 🔴 모르는 것을 그럴듯한 문장으로 채우지 않는다
+        }
+        StringBuilder sb = new StringBuilder();
+        if (info.questionTerm != null) {
+            sb.append(info.questionTerm).append("학기");
+        }
+        if (info.questionSector2 != null && !info.questionSector2.isBlank()) {
+            if (sb.length() > 0) {
+                sb.append(" · ");
+            }
+            sb.append(info.questionSector2);
+        }
+        return sb.toString();
     }
 
     /** {@code question_unit} → 표시 순서. 숫자가 아니면 맨 뒤로 보낸다(문제를 버리지 않는다). */
@@ -388,6 +479,9 @@ public class DataLoader implements CommandLineRunner {
             @JsonProperty("question_grade")      public String questionGrade;
             @JsonProperty("question_unit")       public String questionUnit;
             @JsonProperty("question_topic_name") public String questionTopicName;
+            // 챕터 설명문(「1학기 · 도형과 측정」)에 쓴다. 🔴 Integer 다 — 없음과 0 을 구분한다.
+            @JsonProperty("question_term")       public Integer questionTerm;
+            @JsonProperty("question_sector2")    public String questionSector2;
             @JsonProperty("question_type1")      public String questionType1;
             @JsonProperty("question_step")       public String questionStep;
             // 🔴 Integer 다. int 면 필드가 없을 때 0 이 되어 «없음» 과 «0» 이 구분되지 않는다.
