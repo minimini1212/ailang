@@ -33,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+import com.example.ailang.domain.user.entity.UserGrades;
 /**
  * 문제 서비스 구현체
  */
@@ -217,7 +218,7 @@ public class ProblemServiceImpl implements ProblemService {
     // ---- 유저 수준 파악용 20문제 (LOW 7 + MEDIUM 7 + HIGH 6) ----
     public List<ProblemResponse> getAssessmentProblems(Long userId) {
         User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
-        String grade = user.getGrade().name();
+        String grade = UserGrades.requireName(user);
 
         // 난이도별로 나눠서 조회 후 합치기 → 균형 잡힌 수준 파악 가능
         List<Problem> low    = problemRepository.findRandomsByGradeAndDifficulty(grade, "LOW",    7);
@@ -244,7 +245,7 @@ public class ProblemServiceImpl implements ProblemService {
 
         // JWT에서 가져온 유저의 학년으로 바로 랜덤 문제 조회
         Problem problem = problemRepository
-                .findRandomByGrade(user.getGrade().name())
+                .findRandomByGrade(UserGrades.requireName(user))
                 .orElseThrow(ProblemNotFoundException::new);
 
         // 해당 문제의 챕터에 대한 유저 통계 조회 (없으면 null)

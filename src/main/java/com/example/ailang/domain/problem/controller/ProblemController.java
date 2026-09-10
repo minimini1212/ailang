@@ -18,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import com.example.ailang.domain.user.entity.UserGrades;
 /**
  * 문제 컨트롤러
  * - GET  /api/problems/adaptive?chapterId={id} : 정답률 기반 맞춤형 문제
@@ -71,7 +72,7 @@ public class ProblemController {
             @PathVariable Long problemId) {
         User user = userService.getUserByEmail(userDetails.getEmail());
         return ResponseEntity.ok(ResponseDTO.okWithData(
-                problemService.getConcept(problemId, user.getGrade().name())));
+                problemService.getConcept(problemId, UserGrades.requireName(user))));
     }
 
     // 유저 수준 파악용 20문제 (LOW 7 + MEDIUM 7 + HIGH 6, 섞인 순서로 반환)

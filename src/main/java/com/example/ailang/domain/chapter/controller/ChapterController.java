@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+import com.example.ailang.domain.user.entity.UserGrades;
 /**
  * 챕터 컨트롤러
  * - GET /api/chapters             : 내 학년 챕터 목록 (통계 포함, 인증 필요)
@@ -44,7 +45,7 @@ public class ChapterController {
         // grade 파라미터 없음 → 내 학년 챕터 + 통계 (인증 필요)
         User user = userService.getUserByEmail(userDetails.getEmail());
         List<ChapterResponse> chapters = chapterService.getMyChapters(
-                user.getId(), user.getGrade().name());
+                user.getId(), UserGrades.requireName(user));
         return ResponseEntity.ok(ResponseDTO.okWithData(chapters));
     }
 }

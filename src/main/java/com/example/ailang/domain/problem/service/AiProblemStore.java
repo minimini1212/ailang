@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.example.ailang.domain.user.entity.UserGrades;
 /**
  * AI 모의문제의 DB 작업만 담당한다.
  *
@@ -60,7 +61,7 @@ public class AiProblemStore {
                 .orElse(Difficulty.MEDIUM);
 
         // ⚠️ 학년이 없는 유저(구글 가입)는 여기서 NPE 가 난다. 별도 과제다 (TODOS.md 2절).
-        return new Context(chapter.getTitle(), difficulty, user.getGrade().name());
+        return new Context(chapter.getTitle(), difficulty, UserGrades.requireName(user));
     }
 
     /** ② 생성된 문제를 저장하는 짧은 트랜잭션. */
