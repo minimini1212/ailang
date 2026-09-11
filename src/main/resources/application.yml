@@ -52,6 +52,20 @@ spring:
           google:
             authorization-uri: https://accounts.google.com/o/oauth2/v2/auth?prompt=select_account #매번 계정 선택 화면 표시
 
+ai:
+  server:
+    url: ${AI_SERVER_URL:http://localhost:8001}
+
+data:
+  loader:
+    # 문제 데이터가 이미 있으면 자동으로 건너뜀 (중복 적재 없음)
+    enabled: ${DATA_LOADER_ENABLED:true}
+    # 🔴 절대 경로를 여기 박지 않는다 — 사람마다 다른 값이므로 .env 에서 받는다.
+    #    예전에 C:/Users/USER/OneDrive/... 가 박혀 있어서, 클론한 다른 PC 는 전부
+    #    문제 0건으로 떴다. 키 목록의 진실: .env.example ⑦ · docs/DATA_CONTRACT.md §6
+    problem-dir: ${DATA_PROBLEM_DIR:}
+    answer-dir: ${DATA_ANSWER_DIR:}
+
 jwt:
   secret: ${JWT_SECRET}
   access-expiration: 3600000

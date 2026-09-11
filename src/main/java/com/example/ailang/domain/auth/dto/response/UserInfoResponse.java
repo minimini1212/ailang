@@ -17,6 +17,7 @@ public class UserInfoResponse {
     private String profileImageUrl;
     private AuthProvider provider;
     private UserRole role;
+    private boolean assessmentCompleted;
 
     public static UserInfoResponse from(User user) {
         return UserInfoResponse.builder()
@@ -27,6 +28,7 @@ public class UserInfoResponse {
             .profileImageUrl(user.getProfileImageUrl())
             .provider(user.getProvider())
             .role(user.getRole())
+            .assessmentCompleted(user.isAssessmentCompleted())
             .build();
     }
 }

@@ -1,3 +1,11 @@
+# 줄바꿈은 저장소 안에서 LF 로 통일한다.
+# 이 줄이 없으면 Windows 편집기가 CRLF 로 저장할 때마다, 내용이 한 글자도 안 바뀐
+# 파일이 「전 줄 수정」으로 뜬다. 그대로 커밋되면 git blame 과 git log -p 가 실제
+# 작업을 못 짚는다 — 2026-09-11 에 파일 64개(5,571줄)가 그 상태였다.
+* text=auto eol=lf
+
+# 아래 규칙은 위 규칙보다 «뒤에» 있어야 이긴다 (.gitattributes 는 나중 줄이 우선).
+# Windows 배치 파일은 CRLF 여야 실행된다.
 /gradlew text eol=lf
 *.bat text eol=crlf
 *.jar binary

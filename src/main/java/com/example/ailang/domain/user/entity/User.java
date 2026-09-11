@@ -52,7 +52,16 @@ public class User extends BaseTimeEntity {
     @Column(length = 20)
     private Grade grade;
 
+    // [진단 테스트 추가] 유저가 진단 테스트를 완료했는지 여부 저장
+    @Column(nullable = false, columnDefinition = "number(1,0) default 0")
+    @Builder.Default
+    private boolean assessmentCompleted = false;
+
     public void updateGrade(Grade grade) {
         this.grade = grade;
+    }
+
+    public void completeAssessment() {
+        this.assessmentCompleted = true;
     }
 }
