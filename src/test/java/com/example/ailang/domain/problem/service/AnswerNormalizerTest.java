@@ -139,4 +139,61 @@ class AnswerNormalizerTest {
             assertThat(AnswerNormalizer.matches("①, ③", "3,1")).isFalse();
         }
     }
+
+    @Nested
+    @DisplayName("지수·첨자·연산기호 — 🔴 여기가 아직 안 덮여 있었다")
+    class ScriptsAndOperators {
+
+        @Test
+        @DisplayName("지수의 중괄호는 있으나 없으나 같다")
+        void exponent() {
+            // 막는 것: ^{n} → ^n 규칙이 사라지면 「x^2」라고 쓴 학생이 전부 오답이 된다.
+            assertThat(AnswerNormalizer.matches("$x^{2}$", "x^2")).isTrue();
+            assertThat(AnswerNormalizer.matches("$2^{10}$", "2^10")).isTrue();
+        }
+
+        @Test
+        @DisplayName("아래첨자의 중괄호도 마찬가지다")
+        void subscript() {
+            assertThat(AnswerNormalizer.matches("$a_{1}$", "a_1")).isTrue();
+        }
+
+        @Test
+        @DisplayName("🔴 지수는 «값» 이다 — 2^3 과 2^2 는 다른 답이다")
+        void exponentValueMatters() {
+            // 막는 것: 중괄호를 지우는 규칙이 지수 «내용» 까지 지우게 바뀌는 경우.
+            //         그러면 서로 다른 답이 같은 문자열이 된다.
+            assertThat(AnswerNormalizer.matches("$2^{3}$", "2^2")).isFalse();
+            assertThat(AnswerNormalizer.matches("$x^{2}$", "x")).isFalse();
+        }
+
+        @Test
+        @DisplayName("나눗셈·가운뎃점·플러스마이너스도 기호와 같다")
+        void otherOperators() {
+            assertThat(AnswerNormalizer.matches("$6 \\div 2$", "6÷2")).isTrue();
+            assertThat(AnswerNormalizer.matches("$2 \\cdot 3$", "2·3")).isTrue();
+            assertThat(AnswerNormalizer.matches("$\\pm 5$", "±5")).isTrue();
+        }
+
+        @Test
+        @DisplayName("🔴 ± 5 와 5 는 다른 답이다")
+        void plusMinusIsNotPlain() {
+            // 막는 것: 「뜻이 확실한 명령어만 바꾼다」가 「모르는 명령어는 지운다」로
+            //         되돌아가는 경우. 그러면 ±5 가 5 와 같아진다.
+            assertThat(AnswerNormalizer.matches("$\\pm 5$", "5")).isFalse();
+        }
+
+        @Test
+        @DisplayName("괄호형 원문자도 숫자와 같다")
+        void parenthesizedCircledNumbers() {
+            assertThat(AnswerNormalizer.matches("⑴", "1")).isTrue();
+            assertThat(AnswerNormalizer.matches("⑸", "5")).isTrue();
+        }
+
+        @Test
+        @DisplayName("분수와 지수가 섞여도 자리를 지킨다")
+        void fractionWithExponent() {
+            assertThat(AnswerNormalizer.matches("$\\frac{1}{2^{3}}$", "1/2^3")).isTrue();
+        }
+    }
 }

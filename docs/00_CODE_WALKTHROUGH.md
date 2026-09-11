@@ -72,8 +72,10 @@ POST /api/problems/42/submit
    │  단답형이면  → request.selfJudge          (⚠️ 없으면 400, 오답 아님)
    │
    ├─ 문제가 그 챕터에 속하나?                  아니면 400
+   ├─ USER_CHAPTER_STATS 에 «잠금» 을 잡는다    ← 🔴 순서가 규칙이다. 먼저 잡는다
+   │                                              없으면 별도 트랜잭션으로 만들고 다시 잡는다
+   ├─ 이 문제를 낸 적 있나? (첫 제출 판정)      ← ⚠️ 반드시 잠금을 잡은 «뒤»
    ├─ USER_PROBLEM_HISTORY 에 한 건 남긴다     ← 사실이므로 언제나 남긴다
-   ├─ USER_CHAPTER_STATS 를 찾거나 만든다      ← ⚠️ 잠금 없는 read-then-write
    └─ 🔴 «이 문제의 첫 제출일 때만» stats.recordAnswer(맞았나)
         누적 +1 → 정답률 계산 → 난이도 재계산
         · 3문제 미만이면 안 바꾼다 (아직 모른다)
@@ -149,7 +151,8 @@ services/          🎯 프롬프트가 사는 자리
 | `domain/problem/entity/UserChapterStats` | 통계 누적 + 난이도 재계산 | 🎯 난이도 규칙이 **여기 하나에만** 있다. 좋은 상태다 — 흩뜨리지 말 것 |
 | `domain/problem/enums/Difficulty` | `upgrade()` / `downgrade()` | 양 끝(LOW·HIGH)에서 제자리. 🔴 아직 검사가 없다 |
 | `domain/problem/service/AiProblemStore` | AI 문제의 DB 작업만 | 🎯 트랜잭션을 AI 호출 앞뒤로 짧게 나누려고 뗀 별도 빈 |
-| `domain/problem/service/AnswerNormalizer` | 정답 표기 맞추기 (순수 함수) | ✅ **검사 15건이 붙어 있다.** 🔴 모르는 표기는 지우지 않는다 — 지우면 다른 답이 같아진다 |
+| `domain/problem/service/UserChapterStatsCreator` | 통계 행을 «없으면 만드는» 일만 | 🎯 별도 트랜잭션(`REQUIRES_NEW`) 이어야 하는 것이 존재 이유다 — 같은 트랜잭션에서 유일 제약 위반을 잡으면 롤백밖에 못 한다 |
+| `domain/problem/service/AnswerNormalizer` | 정답 표기 맞추기 (순수 함수) | ✅ **검사가 붙어 있다** (건수는 `TODOS.md` §5). 🔴 모르는 표기는 지우지 않는다 — 지우면 다른 답이 같아진다 |
 | `domain/problem/repository/ProblemRepository` | 네이티브 쿼리 5개 | 🔴 전부 `SOURCE_TYPE = 'REAL'` 을 손으로 적는다. 새 쿼리에서 빠지면 조용히 섞인다 |
 
 ### 🔒 경계와 관문
@@ -186,6 +189,7 @@ services/          🎯 프롬프트가 사는 자리
 | `AnswerNormalizer` | 적재된 기출 정답이 LaTeX(`$\frac{3}{4}$`)·원문자(`①`)로 들어 있어 학생 입력과 문자열 비교가 안 됐다. 🔄 2026-09-02 에 `ProblemServiceImpl` 의 private 메서드에서 꺼냈다 — private 이라 검사를 못 붙이고 있었다 |
 | `TokenType` | 액세스·리프레시·서비스 토큰이 구분되지 않아, 리프레시 토큰 하나로 모든 API 가 통과했다 |
 | `AiProblemStore` | AI 호출이 실측 13초인데 트랜잭션 안에 있어 그동안 DB 커넥션을 붙잡았다 |
+| `UserChapterStatsCreator` | 같은 학생의 동시 제출이 통계 행을 둘 다 만들어 유일 제약을 깨고 **답을 냈는데 500** 이 났다. 제약 위반을 잡아 회복하려면 삽입이 별도 트랜잭션이어야 한다 (2026-09-11) |
 | `ai-server/app/llm_call.py` | 실패를 세 서비스가 각자 분류하고 있었다. 한 자리로 모았다 |
 | `scripts/normalize_answers.py` | 위 정규화를 런타임이 아니라 **저장된 데이터 자체**에 한 번 적용하려고. 정규식으로 못 푸는 정답이 남아 있었다 |
 | `AiServerClient.withAuth` | FastAPI 호출에 JWT 가 빠져 401 이 나던 것을 고치면서. ⚠️ 그때 「서비스 신원」이 아니라 **가짜 유저 토큰**(`service@internal`)으로 때웠고, 그래서 학생 토큰과 구분되지 않았다. 🔄 2026-09-01 에 `TokenType.SERVICE` 로 정리했다 |

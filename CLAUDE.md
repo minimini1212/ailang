@@ -142,8 +142,11 @@ This is the defect the product's whole value rests on.
   "정답 추출 실패", and "파싱 예외" into one `skipped` counter, so *which* 문제 need fixing is
   unknowable. Success, skipped-for-reason-X, and failed are not one number.
 - **Concurrent submissions must not violate the unique constraint.**
-  `USER_CHAPTER_STATS (user_id, chapter_id)` is unique, but the getOrCreate in `submitAnswer`
-  is a read-then-write with no lock.
+  🔄 *Fixed 2026-09-11 — `submitAnswer` now takes the row lock **first**, then reads history,
+  then records.* The rule generalises: **whenever a write is "read, then modify", take the lock
+  before the read that decides the write**, and do the *create* in its own transaction — catching
+  a constraint violation inside the same transaction leaves you able only to roll back.
+  🔴 And never hold such a lock across an outbound call. Details: `docs/rules/grading-and-difficulty.md` R10.
 - **Trust measurements over docs** for data shape and distributions. Query the real tables before
   writing a query that defines a segment or a denominator.
 - **Errors must say which user / problem / chapter / URL failed and why.**
@@ -219,13 +222,21 @@ measured.
 
 ### Tests
 
-There is currently **one test in this repo** and it only loads the Spring context. Treat every
-number about correctness as unverified until a test exists.
+🔄 *This paragraph used to say "there is currently one test in this repo" and to treat every
+number as unverified. That stopped being true on 2026-09-11.* **How many tests there are, and
+what they cover, lives in `TODOS.md` §5 — read it there, and don't copy the number here.**
+
+🔴 **What is covered is pure logic only** — answer normalisation, difficulty transitions, grade
+vocabulary. Everything that needs a DB or a network (submission under concurrency, loading, the
+AI hop) is still **unmeasured**, and a green test run says nothing about it.
 
 - **A new test must fail against the old code.** If it passes both ways it pins nothing.
-- **Grading and difficulty are the first things to cover**, because they are pure logic with no
-  infrastructure excuse: `normalizeAnswer`, `UserChapterStats.recalculateDifficulty`,
-  `Difficulty.upgrade`/`downgrade` at the boundaries (LOW at the bottom, HIGH at the top).
+  🎯 In practice: name, in a comment, *the mutation this test catches*. If you cannot name one,
+  the test is decoration.
+- ✅ **Grading and difficulty are covered** (2026-09-11): `AnswerNormalizer`,
+  `UserChapterStats.recordAnswer` at 3-problem / 80% / 50% boundaries, and
+  `Difficulty.upgrade`/`downgrade` at both ends. **They stay covered** — a change there that
+  does not touch a test is a change that pinned nothing.
 - **Batch behaviour is tested over two runs, not one** — `DataLoader` idempotency is invisible to
   a single-pass test.
 - **Hard cases become fixtures**: LaTeX answers (`$\frac{3}{4}$`), 원문자 정답 (`①`), 복수정답
