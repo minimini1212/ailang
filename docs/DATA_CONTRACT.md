@@ -168,8 +168,23 @@ OAuth2 경로(`CustomOAuth2UserService`)는 받지 않는다. `user.getGrade().n
 
 **UNIQUE `(USER_ID, CHAPTER_ID)`**
 
-🔴 이 유니크 제약과 `submitAnswer` 의 getOrCreate 가 부딪힌다. 잠금 없는 read-then-write 라
-같은 학생의 동시 제출에서 제약 위반이 난다.
+🔄 **2026-09-11: 이 제약과 부딪히던 자리를 닫았다.** 종전에는 `submitAnswer` 의 getOrCreate 가
+잠금 없는 read-then-write 여서, 같은 학생의 동시 제출에서 제약 위반이 나 **학생이 답을 냈는데
+500** 을 받았다.
+
+🔴 **이 표를 고쳐 쓰는 코드는 반드시 「잠금 → 읽기 → 쓰기」 순서를 지킨다.**
+
+```
+읽기만 할 때    findByUserIdAndChapterId            (잠금 없음)
+고쳐 쓸 때      findByUserIdAndChapterIdForUpdate   (SELECT ... FOR UPDATE)
+없어서 만들 때  UserChapterStatsCreator.createIfAbsent  ← 🔴 별도 트랜잭션이어야 한다
+```
+
+⚠️ **만들기를 같은 트랜잭션에서 하면 안 된다.** 유일 제약 위반을 잡아도 그 트랜잭션은
+롤백밖에 못 하게 되므로, 「남이 먼저 만들었으면 그 행을 쓴다」를 할 수가 없다.
+
+⚠️ **이 잠금을 잡은 트랜잭션에서 외부 호출(AI 서버 등)을 하지 않는다.** 잠금은 커밋까지
+유지되고, 범위는 (학생 1명 × 챕터 1개) 다.
 
 ### 관계
 

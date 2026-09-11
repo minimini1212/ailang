@@ -142,8 +142,11 @@ This is the defect the product's whole value rests on.
   "정답 추출 실패", and "파싱 예외" into one `skipped` counter, so *which* 문제 need fixing is
   unknowable. Success, skipped-for-reason-X, and failed are not one number.
 - **Concurrent submissions must not violate the unique constraint.**
-  `USER_CHAPTER_STATS (user_id, chapter_id)` is unique, but the getOrCreate in `submitAnswer`
-  is a read-then-write with no lock.
+  🔄 *Fixed 2026-09-11 — `submitAnswer` now takes the row lock **first**, then reads history,
+  then records.* The rule generalises: **whenever a write is "read, then modify", take the lock
+  before the read that decides the write**, and do the *create* in its own transaction — catching
+  a constraint violation inside the same transaction leaves you able only to roll back.
+  🔴 And never hold such a lock across an outbound call. Details: `docs/rules/grading-and-difficulty.md` R10.
 - **Trust measurements over docs** for data shape and distributions. Query the real tables before
   writing a query that defines a segment or a denominator.
 - **Errors must say which user / problem / chapter / URL failed and why.**

@@ -32,6 +32,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 import com.example.ailang.domain.user.entity.UserGrades;
 /**
@@ -50,6 +51,8 @@ public class ProblemServiceImpl implements ProblemService {
     private final UserRepository userRepository;
     private final AiServerClient aiServerClient;      // FastAPI 호출용
     private final AiProblemStore aiProblemStore;      // AI 문제의 DB 작업 (트랜잭션 분리)
+    // 통계 행 «생성» 만 별도 트랜잭션으로 한다 — 동시 제출의 유일 제약 위반 때문 (아래 submitAnswer)
+    private final UserChapterStatsCreator userChapterStatsCreator;
 
     @Override
     // ---- 맞춤형 문제 조회 ----
@@ -121,8 +124,27 @@ public class ProblemServiceImpl implements ProblemService {
 
         boolean isCorrect = grade(problem, request);
 
-        // 풀이 이력 1건 저장 (USER_PROBLEM_HISTORY에 INSERT)
+        // 🔴 순서가 규칙이다 — 잠금을 «먼저» 잡는다.
+        //
+        //    같은 학생의 동시 제출 두 건이 이 아래를 겹쳐서 실행하면 세 가지가 깨진다.
+        //      ① 통계 행이 없을 때 둘 다 만들어 유일 제약 위반 → 학생이 500 을 받는다
+        //      ② 둘 다 같은 값을 읽고 각각 +1 → 한 건이 사라진다 (lost update)
+        //      ③ 같은 문제인데 둘 다 「첫 제출」로 읽어 정답률에 두 번 센다
+        //
+        //    잠금을 잡은 뒤에 이력을 조회하면 셋이 함께 닫힌다. 뒤 요청은 앞 요청이
+        //    «커밋한 뒤에» 이력을 읽으므로 ③ 도 자연히 없어진다.
+        //
+        //      A: 잠금 ── 이력조회(없음) ── 이력저장 ── 통계+1 ── commit
+        //      B:        (대기) ─────────────────────────────────── 이력조회(있음) ──
+        //                                                           이력저장 · 통계는 그대로
+        //
+        //    ⚠️ 이 잠금은 트랜잭션이 끝날 때까지 유지된다. 그래서 이 메서드 안에서
+        //       외부 호출(AI 서버 등)을 하지 않는다 — 하면 다른 요청을 몇 초씩 세워 둔다.
+        UserChapterStats stats = getOrCreateStatsForUpdate(userId, chapter.getId());
+
         // 🎯 이력은 «사실» 이므로 언제나 남긴다. 반복 제출이어도 남긴다.
+        //    ⚠️ 「첫 제출인가」 판정은 잠금을 잡은 «뒤» 에 해야 한다. 앞에서 하면
+        //       동시 요청 둘이 같은 답을 얻어, 잠금이 있어도 두 번 세어진다.
         boolean firstAttempt = !userProblemHistoryRepository
                 .existsByUserIdAndProblemId(userId, problemId);
 
@@ -132,15 +154,6 @@ public class ProblemServiceImpl implements ProblemService {
                 .userAnswer(request.getUserAnswer())
                 .isCorrect(isCorrect)
                 .build());
-
-        // 챕터 통계 getOrCreate 패턴:
-        // - 기존에 이 챕터를 푼 적 있으면 → 기존 통계 레코드 사용
-        // - 처음 푸는 챕터면 → 새 통계 레코드 생성 후 저장
-        UserChapterStats stats = userChapterStatsRepository
-                .findByUserIdAndChapterId(userId, request.getChapterId())
-                .orElseGet(() -> userChapterStatsRepository.save(
-                        UserChapterStats.builder().user(user).chapter(chapter).build()
-                ));
 
         // 🔴 통계에는 «문제당 첫 제출» 만 반영한다.
         //    제출 응답이 정답을 알려주므로(설계), 중복 제출을 막지 않으면
@@ -152,6 +165,31 @@ public class ProblemServiceImpl implements ProblemService {
         }
 
         return SubmitAnswerResponse.of(isCorrect, problem.getAnswer(), problem.getExplanation(), stats);
+    }
+
+    /**
+     * 고쳐 쓸 (학생 × 챕터) 통계를 «잠금까지 잡아» 가져온다. 없으면 만들고 다시 잡는다.
+     *
+     * <p>🔴 삽입은 {@link UserChapterStatsCreator} 가 <b>별도 트랜잭션</b>에서 한다.
+     * 같은 트랜잭션에서 유일 제약 위반을 잡으면 그 트랜잭션은 롤백밖에 못 하게 되므로,
+     * 「남이 먼저 만들었으면 그 행을 쓴다」를 여기서 할 수 없다.
+     *
+     * <p>⚠️ 두 번째 조회까지 비어 있는 경우는 «있을 수 없는» 상태다. 만들기가 성공했거나
+     * 제약 위반이 났거나 둘 중 하나이고, 제약 위반이면 다른 트랜잭션이 이미 커밋한 것이다.
+     * 조용히 넘기지 않고 터뜨린다 — 그 상태로 진행하면 정답률이 말없이 사라진다.
+     */
+    private UserChapterStats getOrCreateStatsForUpdate(Long userId, Long chapterId) {
+        Optional<UserChapterStats> locked =
+                userChapterStatsRepository.findByUserIdAndChapterIdForUpdate(userId, chapterId);
+        if (locked.isPresent()) {
+            return locked.get();
+        }
+
+        userChapterStatsCreator.createIfAbsent(userId, chapterId);
+
+        return userChapterStatsRepository.findByUserIdAndChapterIdForUpdate(userId, chapterId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "통계 행을 만든 직후에 찾지 못했다 - userId=" + userId + ", chapterId=" + chapterId));
     }
 
     /**
