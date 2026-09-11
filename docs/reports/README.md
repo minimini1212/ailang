@@ -18,7 +18,7 @@
 
 | 문서 | 무엇을 넘겼나 |
 | --- | --- |
-| [HANDOFF_2026-09-11_chapter-reload-and-screens.md](HANDOFF_2026-09-11_chapter-reload-and-screens.md) | 챕터 재적재(대단원 8개)와 맞춤 문제 화면. 🔴 **프론트가 git 저장소가 아니다** · 학년 고치는 길이 없다 · 정답 200자 초과 20건 |
+| [HANDOFF_2026-09-11_chapter-reload-and-screens.md](HANDOFF_2026-09-11_chapter-reload-and-screens.md) | 챕터 재적재(대단원 8개)와 맞춤 문제 화면. ~~프론트가 git 저장소가 아니다~~ 🔄 **§1 은 2026-09-11 에 해결**(별도 저장소로 올렸다) · 학년 고치는 길이 없다 · 정답 200자 초과 20건 |
 
 ### 인계 문서(HANDOFF)는 언제 쓰나
 

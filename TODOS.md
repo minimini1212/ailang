@@ -25,7 +25,7 @@
 
 ### 🎯 화면이 아직 「고리」를 안 열었다 (2026-08-27 프론트 확인)
 
-프론트엔드는 `C:\webStorm_workspace\ailang` 에 있다(별도 폴더, git 저장소 아님).
+프론트엔드는 `C:\webStorm_workspace\ailang` 에 있다 — **별도 git 저장소**(2026-09-11 부터).
 화면이 다섯 개뿐이고, **맞춤 문제·개념 설명·AI 모의문제 화면이 없다** —
 `/adaptive` · `/random` · `/random-by-grade` · `/{id}/concept` · `/ai-generated`
 **다섯 엔드포인트가 아무 데서도 안 불린다.**

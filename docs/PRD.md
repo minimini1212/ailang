@@ -116,7 +116,7 @@ AI Hub 수학 자료를 벡터로 만들어 두고, 질문이 오면 **학년으
 
 | | 왜 |
 | --- | --- |
-| **프론트엔드 코드** | 이 레포에 없다 — `C:\webStorm_workspace\ailang` (React 19 · Vite · axios · KaTeX). 별도 폴더이고 git 저장소가 아니다. `localhost:5173` 을 전제한다 |
+| **프론트엔드 코드** | 이 레포에 없다 — `C:\webStorm_workspace\ailang` (React 19 · Vite · axios · KaTeX). **별도 git 저장소**다(2026-09-11 부터 — 그전에는 버전 관리 밖이었다). `localhost:5173` 을 전제한다 |
 | **결제·구독** | |
 | **학부모·교사 계정** | 학생 단일 역할만 |
 | **손글씨·이미지 답안 인식** | 텍스트 입력만 |
