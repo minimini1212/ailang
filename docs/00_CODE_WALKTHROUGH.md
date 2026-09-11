@@ -1,6 +1,6 @@
 # 코드 개관 — 어디에 무엇이 있고, 왜 그 폴더가 있나
 
-> **최종 갱신: 2026-09-02**
+> **최종 갱신: 2026-09-11**
 > 파일이 생기거나 역할이 바뀌면 이 문서를 **같은 커밋에서** 갱신한다 — 폴더 지도, 역할 설명,
 > 그리고 위의 「최종 갱신」 날짜까지. 낡은 지도는 없는 지도보다 나쁘다.
 
@@ -90,7 +90,7 @@ POST /api/problems/42/submit
 ```
 domain/          업무 단위별로 나뉜다. 도메인끼리는 서비스를 통해서만 부른다
   auth/            가입·인증·로그인·토큰
-  user/            유저 정보·학년
+  user/            유저 정보·학년 (🎯 학년을 «정하는» 유일한 자리)
   chapter/         단원 목록
   problem/         🎯 문제 선택·채점·통계·난이도 — 이 프로젝트의 심장
   chat/            AI 챗봇 (FastAPI 로 넘기기만 한다)
@@ -191,6 +191,9 @@ services/          🎯 프롬프트가 사는 자리
 | `AiServerClient.withAuth` | FastAPI 호출에 JWT 가 빠져 401 이 나던 것을 고치면서. ⚠️ 그때 「서비스 신원」이 아니라 **가짜 유저 토큰**(`service@internal`)으로 때웠고, 그래서 학생 토큰과 구분되지 않았다. 🔄 2026-09-01 에 `TokenType.SERVICE` 로 정리했다 |
 | `JwtAuthenticationFilter` 의 블랙리스트 | 로그아웃 뒤에도 탈취된 access token 이 만료 전까지 유효하던 취약점 때문 |
 | `User.assessmentCompleted` | 진단 테스트를 이미 본 학생에게 또 보여주지 않으려고 |
+| `UserGrades` | `user.getGrade().name()` 이 다섯 자리에 흩어져 있었고, 학년 없는 계정(구글 가입)이 그 다섯 곳에서 전부 **NPE → 500** 이었다. 자리마다 막으면 여섯 번째가 또 빠진다 |
+| `UpdateGradeRequest` + `PATCH /me/grade` | 위 `UserGrades` 가 「학년을 먼저 설정해 주세요」(400)를 내기 시작했는데, **정작 설정할 길이 없었다.** 구글 가입 학생은 안내를 받고도 갈 곳이 없었다 (2026-09-11) |
+| `frontend/src/constants/grades.ts` | 같은 학년 목록이 가입 화면·홈 화면에 따로 적혀 있어, 학년 설정 화면을 만들면 **네 번째 사본**이 될 참이었다 |
 | `springboot4-dotenv` 의존성 | Spring Boot 4 에서 `spring-dotenv` 4.0.0 이 안 붙어서. `build.gradle` 주석에 근거가 있다 |
 | `jackson-databind` 명시 의존성 | Spring Boot 4 의 `starter-web` 이 더 이상 전이 포함하지 않아 컴파일이 깨졌다 |
 
