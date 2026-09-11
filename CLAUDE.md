@@ -160,8 +160,13 @@ This is the defect the product's whole value rests on.
 - **Internal service calls are not user tokens.** `AiServerClient` mints an access token for the
   fabricated subject `service@internal` using the same key and the same claims as a student's
   token. A service identity needs its own claim, and the AI server should require it.
-- **CORS and the OAuth redirect target are config, not literals** — `http://localhost:5173`
-  appears in both `SecurityConfig` and `application.yml`.
+- **CORS and the OAuth redirect target are config, not literals.**
+  🔄 *Fixed 2026-09-11.* Both now derive from a single key, `app.frontend.origin`
+  (`APP_FRONTEND_ORIGIN`); the backend's own callback base is a **separate** key,
+  `APP_OAUTH2_CALLBACK_BASE`, because it is a different address with a different owner.
+  The rule stands for the next address: **one key, every reader** — the failure it prevents is
+  "login succeeds but the screen never receives the response", whose symptom points at login
+  and not at CORS. Key list: `.env.example` ⑧ · `docs/DATA_CONTRACT.md` §6.
 
 ---
 
@@ -294,8 +299,10 @@ change a decision
 
 ⚠️ **This repo repeats config in five places.** A port, a URL, or a model name changes in
 `application.yml`, `docker-compose.yml`, `.env.example`, `ai-server/app/config.py`, and the docs.
-Redis is already `6380` on the host and `6379` inside the network; the frontend origin is written
-twice. Grep before you believe you changed it once.
+Redis is already `6380` on the host and `6379` inside the network. Grep before you believe you
+changed it once.
+🔄 *2026-09-11: the frontend origin used to be the standing example here — it was written twice
+and is now one key. That is what resolving a hit looks like; the warning itself still holds.*
 
 ### Reviews leave their original (HARD)
 
