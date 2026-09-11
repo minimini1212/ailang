@@ -152,7 +152,7 @@ services/          🎯 프롬프트가 사는 자리
 | `domain/problem/enums/Difficulty` | `upgrade()` / `downgrade()` | 양 끝(LOW·HIGH)에서 제자리. 🔴 아직 검사가 없다 |
 | `domain/problem/service/AiProblemStore` | AI 문제의 DB 작업만 | 🎯 트랜잭션을 AI 호출 앞뒤로 짧게 나누려고 뗀 별도 빈 |
 | `domain/problem/service/UserChapterStatsCreator` | 통계 행을 «없으면 만드는» 일만 | 🎯 별도 트랜잭션(`REQUIRES_NEW`) 이어야 하는 것이 존재 이유다 — 같은 트랜잭션에서 유일 제약 위반을 잡으면 롤백밖에 못 한다 |
-| `domain/problem/service/AnswerNormalizer` | 정답 표기 맞추기 (순수 함수) | ✅ **검사 15건이 붙어 있다.** 🔴 모르는 표기는 지우지 않는다 — 지우면 다른 답이 같아진다 |
+| `domain/problem/service/AnswerNormalizer` | 정답 표기 맞추기 (순수 함수) | ✅ **검사가 붙어 있다** (건수는 `TODOS.md` §5). 🔴 모르는 표기는 지우지 않는다 — 지우면 다른 답이 같아진다 |
 | `domain/problem/repository/ProblemRepository` | 네이티브 쿼리 5개 | 🔴 전부 `SOURCE_TYPE = 'REAL'` 을 손으로 적는다. 새 쿼리에서 빠지면 조용히 섞인다 |
 
 ### 🔒 경계와 관문

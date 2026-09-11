@@ -195,13 +195,21 @@ measured.
 
 ### Tests
 
-There is currently **one test in this repo** and it only loads the Spring context. Treat every
-number about correctness as unverified until a test exists.
+🔄 *This paragraph used to say "there is currently one test in this repo" and to treat every
+number as unverified. That stopped being true on 2026-09-11.* **How many tests there are, and
+what they cover, lives in `TODOS.md` §5 — read it there, and don't copy the number here.**
+
+🔴 **What is covered is pure logic only** — answer normalisation, difficulty transitions, grade
+vocabulary. Everything that needs a DB or a network (submission under concurrency, loading, the
+AI hop) is still **unmeasured**, and a green test run says nothing about it.
 
 - **A new test must fail against the old code.** If it passes both ways it pins nothing.
-- **Grading and difficulty are the first things to cover**, because they are pure logic with no
-  infrastructure excuse: `normalizeAnswer`, `UserChapterStats.recalculateDifficulty`,
-  `Difficulty.upgrade`/`downgrade` at the boundaries (LOW at the bottom, HIGH at the top).
+  🎯 In practice: name, in a comment, *the mutation this test catches*. If you cannot name one,
+  the test is decoration.
+- ✅ **Grading and difficulty are covered** (2026-09-11): `AnswerNormalizer`,
+  `UserChapterStats.recordAnswer` at 3-problem / 80% / 50% boundaries, and
+  `Difficulty.upgrade`/`downgrade` at both ends. **They stay covered** — a change there that
+  does not touch a test is a change that pinned nothing.
 - **Batch behaviour is tested over two runs, not one** — `DataLoader` idempotency is invisible to
   a single-pass test.
 - **Hard cases become fixtures**: LaTeX answers (`$\frac{3}{4}$`), 원문자 정답 (`①`), 복수정답
