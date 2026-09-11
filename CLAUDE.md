@@ -182,7 +182,17 @@ measured.
 ## Working rules
 
 - **One step at a time.** Don't implement several phases because they seem related.
-- **The user pushes. Claude commits only when explicitly asked, and never pushes.**
+- **One task, one branch.** Cut a task branch from the current work branch and keep one
+  concern on it. Never commit directly to `main`.
+- 🔄 **Claude pushes the task branch when the task is finished.** *Changed 2026-09-11 — this
+  line previously read "The user pushes … and never pushes."* What did **not** change:
+  Claude commits only when asked, **never pushes to `main`**, never force-pushes, and never
+  opens or merges a pull request unless asked. A push publishes the work; if the branch is not
+  actually finished, say so and don't push.
+- **Say what was verified and what was not, in the commit message.** This machine has neither a
+  JDK nor a running Docker, so a session may be unable to compile or run the tests it wrote.
+  🔴 **An unverified change must be labelled unverified** — a green-looking commit that nobody
+  built is the same failure mode as a stale document.
 - **Business logic is pure functions or entity methods** (grading, difficulty transitions,
   answer normalisation, LaTeX handling) so it can be tested without a DB or a network.
 - **Fix the source, not the symptom.** If a rule above names a defect, fixing that one call site
