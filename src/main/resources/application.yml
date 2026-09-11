@@ -3,7 +3,9 @@ spring:
     name: ailang
 
   datasource:
-    url: jdbc:oracle:thin:@localhost:1521/FREEPDB1
+    # 🔴 주소도 설정이다. 계정·비번만 환경변수이고 주소만 리터럴이면, 배포할 때
+    #    「비밀은 잘 뺐는데 접속은 여전히 내 PC 로 간다」가 된다.
+    url: ${DB_URL:jdbc:oracle:thin:@localhost:1521/FREEPDB1}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: oracle.jdbc.OracleDriver
@@ -12,10 +14,12 @@ spring:
     database-platform: org.hibernate.dialect.OracleDialect
     hibernate:
       ddl-auto: update
-    show-sql: true
+    # 🔴 기본값을 false 로 둔다. 켜면 실행 SQL 이 «바인딩 값과 함께» 로그로 흐르는데,
+    #    그 안에 학생 이메일·답안이 들어 있다. 개발 중 필요하면 .env 에서 켠다.
+    show-sql: ${JPA_SHOW_SQL:false}
     properties:
       hibernate:
-        format_sql: true
+        format_sql: ${JPA_SHOW_SQL:false}
 
   data:
     redis:
@@ -47,7 +51,8 @@ spring:
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_SECRET_KEY}
             scope: email, profile
-            redirect-uri: "http://localhost:8080/login/oauth2/code/google"
+            # ⚠️ 이건 «백엔드 자신» 의 콜백 주소다. 아래 app.frontend.origin 과 성격이 다르다.
+            redirect-uri: "${APP_OAUTH2_CALLBACK_BASE:http://localhost:8080}/login/oauth2/code/google"
         provider:
           google:
             authorization-uri: https://accounts.google.com/o/oauth2/v2/auth?prompt=select_account #매번 계정 선택 화면 표시
@@ -72,7 +77,12 @@ jwt:
   refresh-expiration: 604800000
 
 app:
+  # 🎯 프론트 주소의 «정본» 은 여기 하나다.
+  #    종전에는 SecurityConfig(CORS) 와 아래 redirect-uri 두 곳에 localhost:5173 이
+  #    각각 박혀 있어서, 한쪽만 고치면 「로그인은 되는데 화면이 못 받는」 상태가 됐다.
+  frontend:
+    origin: ${APP_FRONTEND_ORIGIN:http://localhost:5173}
   oauth2:
-    redirect-uri: http://localhost:5173/oauth2/callback
+    redirect-uri: ${APP_FRONTEND_ORIGIN:http://localhost:5173}/oauth2/callback
   mail:
     verification-code-ttl: 300
