@@ -182,8 +182,20 @@ measured.
 ## Working rules
 
 - **One step at a time.** Don't implement several phases because they seem related.
-- **One task, one branch.** Cut a task branch from the current work branch and keep one
-  concern on it. Never commit directly to `main`.
+- **One branch per piece of work — not per change.** Cut a task branch from the current work
+  branch; never commit directly to `main`.
+  🔄 *Sized 2026-09-11 by the user: branches were being cut far too fine — one of them carried
+  a twelve-line edit to this file and nothing else.*
+  The unit is **what one person would review and verify in a single sitting** — usually one
+  `TODOS.md` section, or one coherent theme. Not one bullet, one file, or one rule tweak.
+  - A **doc or rule change rides along** with the work that motivated it. It never gets its own
+    branch. *(This very rule was committed onto the branch that already owned the push rules.)*
+  - A **fix and the tests that pin it are one branch.** If two changes are checked by the same
+    test run, they ship together.
+  - **Split only when the parts would be reviewed, reverted, or merged separately** — config
+    with no behaviour change is not the same review as a change inside the grading path.
+  - ⚠️ Too coarse has its own cost: if you cannot say in one line what the branch is for, or a
+    reviewer would have to hold two unrelated failures in their head, it is two branches.
 - 🔄 **Claude pushes the task branch when the task is finished.** *Changed 2026-09-11 — this
   line previously read "The user pushes … and never pushes."* What did **not** change:
   Claude commits only when asked, **never pushes to `main`**, never force-pushes, and never
