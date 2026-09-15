@@ -16,6 +16,13 @@ public enum ErrorCode {
     INVALID_CODE(HttpStatus.BAD_REQUEST, "인증 코드가 일치하지 않습니다."),
     EMAIL_SENDING_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "이메일 발송에 실패했습니다."),
 
+    // 🔴 인증 메일과 코드 입력에는 상한이 하나도 없었다. 6자리 숫자를 무제한으로
+    //    넣어 볼 수 있었고(1,000,000 분의 1 이 아니라 사실상 시간 문제였다),
+    //    /api/auth/email/send 는 로그인 없이 부를 수 있어 임의 주소로 메일을
+    //    무한히 쏠 수 있었다. 상한 값은 설정으로 뺐다 — application.yml 의 app.mail.*
+    EMAIL_SEND_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "인증 메일을 너무 자주 요청했어요. 잠시 후 다시 시도해 주세요."),
+    CODE_ATTEMPTS_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "인증 코드를 여러 번 틀렸어요. 코드를 다시 받아 주세요."),
+
     INVALID_PASSWORD(HttpStatus.BAD_REQUEST, "비밀번호가 틀렸습니다."),
 
     TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "토큰이 만료되었습니다."),

@@ -1,6 +1,6 @@
 # 코드 개관 — 어디에 무엇이 있고, 왜 그 폴더가 있나
 
-> **최종 갱신: 2026-09-11**
+> **최종 갱신: 2026-09-15**
 > 파일이 생기거나 역할이 바뀌면 이 문서를 **같은 커밋에서** 갱신한다 — 폴더 지도, 역할 설명,
 > 그리고 위의 「최종 갱신」 날짜까지. 낡은 지도는 없는 지도보다 나쁘다.
 
@@ -149,9 +149,9 @@ services/          🎯 프롬프트가 사는 자리
 | --- | --- | --- |
 | `domain/problem/service/ProblemServiceImpl` | 문제 선택·채점·개념 설명·AI 문제 | ⚠️ 단답형은 여전히 클라이언트 판정을 쓴다(결정 대기). `getAiProblem` 은 트랜잭션 밖에서 AI 를 부른다 |
 | `domain/problem/entity/UserChapterStats` | 통계 누적 + 난이도 재계산 | 🎯 난이도 규칙이 **여기 하나에만** 있다. 좋은 상태다 — 흩뜨리지 말 것 |
-| `domain/problem/enums/Difficulty` | `upgrade()` / `downgrade()` | 양 끝(LOW·HIGH)에서 제자리. 🔴 아직 검사가 없다 |
+| `domain/problem/enums/Difficulty` | `upgrade()` / `downgrade()` | 양 끝(LOW·HIGH)에서 제자리. ✅ 검사가 붙어 있다 (2026-09-11) |
 | `domain/problem/service/AiProblemStore` | AI 문제의 DB 작업만 | 🎯 트랜잭션을 AI 호출 앞뒤로 짧게 나누려고 뗀 별도 빈 |
-| `domain/problem/service/UserChapterStatsCreator` | 통계 행을 «없으면 만드는» 일만 | 🎯 별도 트랜잭션(`REQUIRES_NEW`) 이어야 하는 것이 존재 이유다 — 같은 트랜잭션에서 유일 제약 위반을 잡으면 롤백밖에 못 한다 |
+| `domain/problem/service/UserChapterStatsCreator` | 통계 행을 **만드는** 일만 | 🎯 별도 트랜잭션(`REQUIRES_NEW`) 이어야 하는 것이 존재 이유다. 🔴 **아무것도 삼키지 않는다** — 제약 위반은 그대로 던지고 «부르는 쪽» 이 잡는다. 안에서 잡았다가 커밋 때 다시 터진 적이 있다 (2026-09-15, 규칙 R10-1) |
 | `domain/problem/service/AnswerNormalizer` | 정답 표기 맞추기 (순수 함수) | ✅ **검사가 붙어 있다** (건수는 `TODOS.md` §5). 🔴 모르는 표기는 지우지 않는다 — 지우면 다른 답이 같아진다 |
 | `domain/problem/repository/ProblemRepository` | 네이티브 쿼리 5개 | 🔴 전부 `SOURCE_TYPE = 'REAL'` 을 손으로 적는다. 새 쿼리에서 빠지면 조용히 섞인다 |
 
@@ -164,12 +164,14 @@ services/          🎯 프롬프트가 사는 자리
 | `global/jwt/JwtTokenProvider` · `TokenType` | 토큰 발급·파싱·**종류 확인** | jjwt 0.11.2 (옛 API). 🔴 `typ` 클레임(ACCESS/REFRESH/SERVICE)이 쓰이는 자리마다 요구된다 |
 | `global/client/AiServerClient` | 🎯 **FastAPI 를 부르는 유일한 자리** | 서비스 토큰을 붙이고, AI 실패를 429·502·503 으로 보존한다 |
 | `ai-server/app/services/auth_service.py` | 반대편 JWT 검증 | SERVICE 토큰만 받는다. ⚠️ Spring 의 로그아웃 블랙리스트는 여전히 모른다 |
+| `domain/auth/service/EmailVerificationServiceImpl` | 인증 메일 발송·코드 확인 | 🔴 **순서가 규칙이다** — 상한 확인은 메일 발송보다도 앞, 횟수 세기는 코드 대조보다도 앞. 뒤로 옮기면 상한이 무력해진다 |
+| `domain/auth/service/AttemptLimit` | 「몇 번까지 허용하나」 판정 (순수 함수) | 🎯 경계에서 한 칸 틀리기 쉬워서 따로 뺐다 — 세는 값이 «올린 뒤» 라 5회 허용은 `> 5` 다. ✅ 검사 4건 |
 
 ### 🔧 그 외
 
 | 파일 | 무엇 | 알아야 할 것 |
 | --- | --- | --- |
-| `global/loader/DataLoader` | 기출 JSON → DB | 🔴 경로가 틀려도 **경고만** 남기고 문제 0건으로 뜬다 |
+| `global/loader/DataLoader` | 기출 JSON → DB | 🔴 경로가 틀려도 **경고만** 남기고 문제 0건으로 뜬다. ⚠️ 가드가 「기출이 한 건이라도 있으면 통째로 건너뛴다」라 **절반만 들어간 상태를 채울 수 없다** |
 | `global/exception/GlobalExceptionHandler` | 전역 예외 → 응답 | ⚠️ 마지막 `RuntimeException` 분기가 넓다. AI 실패는 `AiServerClient` 가 먼저 분류해 빠져나간다 |
 | `global/response/ResponseDTO` | 공통 봉투 | `code` 는 HTTP 상태와 같은 값이다 |
 | `global/config/AppConfig` | `PasswordEncoder`·`RestTemplate` | 연결 5초·읽기 60초. ⚠️ 읽기가 긴 건 AI 응답이 실측 13~19초라서다 |

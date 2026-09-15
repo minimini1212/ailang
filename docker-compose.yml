@@ -1,3 +1,13 @@
+# 🔴 포트는 모두 127.0.0.1 에 묶는다.
+#
+#    예전에는 `"1521:1521"` 처럼 적어 두었는데, 이 표기는 «0.0.0.0», 즉 이 PC 의 모든
+#    네트워크 인터페이스에 포트를 연다. 카페·학교 와이파이에 붙어 있으면 같은 망의
+#    아무나 Oracle·Redis·AI 서버에 바로 닿는다. Redis 에는 리프레시 토큰 «원문» 과
+#    로그아웃 블랙리스트가 들어 있다.
+#
+#    ⚠️ 포트를 아예 안 여는 것이 더 안전하지만 지금은 못 한다 — 스프링이 이 compose 안에
+#       있지 않고 호스트에서 직접 뜨기 때문에, 호스트에서 localhost 로 닿을 수 있어야 한다.
+#       compose 에 스프링을 넣을지는 배포 대상 결정에 달려 있다 (TODOS.md 8절).
 services:
   oracle:
     image: gvenzl/oracle-free
@@ -5,7 +15,7 @@ services:
     environment:
       ORACLE_PASSWORD: oracle
     ports:
-      - "1521:1521"
+      - "127.0.0.1:1521:1521"
     volumes:
       - oracle-data:/opt/oracle/oradata
     networks:
@@ -15,8 +25,15 @@ services:
   redis:
     image: redis:7-alpine
     container_name: ailang-redis
+    # 🔴 비밀번호 없이 떠 있었다. 여기엔 리프레시 토큰 원문(7일 유효)과 로그아웃
+    #    블랙리스트가 들어 있으므로, 붙을 수 있는 사람은 남의 계정으로 토큰을 재발급받고
+    #    로그아웃을 되돌릴 수 있다.
+    #    ⚠️ .env 에 REDIS_PASSWORD 를 넣어야 실제로 걸린다. 비어 있으면 redis 는 예전처럼
+    #       인증 없이 뜬다 — 값이 없는 것을 「괜찮다」로 바꾸지 않으려고, 조용히 통과시키는
+    #       대신 이 주석과 .env.example 에 적어 둔다. Claude 는 .env 를 쓰지 않는다.
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-}"]
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"
     volumes:
       - redis-data:/data
     networks:
@@ -31,7 +48,7 @@ services:
     env_file:
       - ./.env
     ports:
-      - "8001:8000"
+      - "127.0.0.1:8001:8000"
     depends_on:
       - redis
     networks:

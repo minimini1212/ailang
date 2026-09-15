@@ -86,3 +86,9 @@ app:
     redirect-uri: ${APP_FRONTEND_ORIGIN:http://localhost:5173}/oauth2/callback
   mail:
     verification-code-ttl: 300
+    # ⚠️ 이 세 값은 «사용자 결정 대기» 다 (TODOS.md 8절 「인증코드 잠금 횟수」).
+    #    결정 전까지 무제한으로 두지 않기 위한 잠정값이며, 코드가 아니라 여기 있으므로
+    #    정해지면 이 줄만 바꾸면 된다.
+    max-send-per-window: ${MAIL_MAX_SEND_PER_WINDOW:5}
+    send-window-seconds: ${MAIL_SEND_WINDOW_SECONDS:3600}
+    max-verify-attempts: ${MAIL_MAX_VERIFY_ATTEMPTS:5}

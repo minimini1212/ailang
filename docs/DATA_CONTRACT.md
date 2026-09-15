@@ -177,11 +177,15 @@ OAuth2 경로(`CustomOAuth2UserService`)는 받지 않는다. `user.getGrade().n
 ```
 읽기만 할 때    findByUserIdAndChapterId            (잠금 없음)
 고쳐 쓸 때      findByUserIdAndChapterIdForUpdate   (SELECT ... FOR UPDATE)
-없어서 만들 때  UserChapterStatsCreator.createIfAbsent  ← 🔴 별도 트랜잭션이어야 한다
+없어서 만들 때  UserChapterStatsCreator.create       ← 🔴 별도 트랜잭션이어야 한다
 ```
 
 ⚠️ **만들기를 같은 트랜잭션에서 하면 안 된다.** 유일 제약 위반을 잡아도 그 트랜잭션은
 롤백밖에 못 하게 되므로, 「남이 먼저 만들었으면 그 행을 쓴다」를 할 수가 없다.
+
+🔴 **그리고 «잡는 자리» 도 그 별도 트랜잭션 밖이어야 한다.** 안에서 잡으면 예외는
+사라지지만 그 트랜잭션은 이미 「롤백 전용」이라 **반환하며 커밋할 때 다시 터진다**
+(2026-09-15 에 검사가 잡았다 — `rules/grading-and-difficulty.md` R10-1).
 
 ⚠️ **이 잠금을 잡은 트랜잭션에서 외부 호출(AI 서버 등)을 하지 않는다.** 잠금은 커밋까지
 유지되고, 범위는 (학생 1명 × 챕터 1개) 다.
@@ -338,15 +342,28 @@ COMMIT;
 | --- | --- | --- | --- |
 | `refresh:token:{email}` | 리프레시 토큰 **원문** | 재발급. 🔴 **유출되면 그대로 로그인이다** | `AuthServiceImpl:127` · `OAuth2SuccessHandler:42` |
 | `blacklist:access:{토큰}` | `"logout"` | **로그아웃의 유일한 근거.** 지우면 로그아웃이 되돌아간다 | `AuthServiceImpl:114` |
-| `email:verify:code:{email}` | 6자리 숫자 (TTL 300초) | 이메일 인증 | `EmailVerificationServiceImpl:38` |
-| `email:verified:{email}` | `"true"` (TTL 30분) | 🔴 **이걸 넣으면 이메일 인증 없이 가입된다** | `EmailVerificationServiceImpl:50` |
-| `ailang:chat:{session_id}` | 대화 이력 리스트 (TTL 1시간) | 챗봇 맥락. ⚠️ **유저에 안 묶여 있다** | `rag_service.py:33` |
+| `email:verify:code:{email}` | 6자리 숫자 (TTL 300초) | 이메일 인증 | `EmailVerificationServiceImpl` |
+| `email:verified:{email}` | `"true"` (TTL 30분) | 🔴 **이걸 넣으면 이메일 인증 없이 가입된다** | `EmailVerificationServiceImpl` |
+| `email:verify:send-count:{email}` | 발송 횟수 (TTL 1시간) | 🔄 **2026-09-15 신설.** 한 주소로 인증 메일을 몇 통 보냈나 — 지우면 상한이 초기화된다 | `EmailVerificationServiceImpl` |
+| `email:verify:attempt:{email}` | 입력 횟수 (TTL 300초) | 🔄 **2026-09-15 신설.** 코드를 몇 번 넣어 봤나 — 지우면 무제한 대입이 된다 | `EmailVerificationServiceImpl` |
+| `ailang:chat:{user_id}:{session_id}` | 대화 이력 리스트 (TTL 1시간) | 챗봇 맥락. 🔄 **2026-09-01 에 학생 id 가 키에 들어갔다** — 예전에는 남의 session_id 를 넣으면 남의 대화가 실렸다 | `rag_service.py` |
 
 ### 🔴 그래서 이 Redis 는 인증 없이 열려 있으면 안 된다
 
-`docker-compose.yml` 이 `6380:6379` 로 **호스트 전체에** 바인딩하고 비밀번호가 없다.
 닿을 수 있는 누구나 ① 전 학생의 리프레시 토큰을 읽고 ② 블랙리스트를 지워 로그아웃을
-되돌리고 ③ `email:verified:*` 를 직접 넣어 인증을 건너뛴다.
+되돌리고 ③ `email:verified:*` 를 직접 넣어 인증을 건너뛰고 ④ 위의 두 상한 키를 지워
+메일 폭탄과 코드 대입을 무제한으로 만든다.
+
+🔄 **2026-09-15 에 절반 닫았다.**
+
+| | 전 | 후 |
+| --- | --- | --- |
+| 바인딩 | `6380:6379` — **모든 네트워크 인터페이스**. 같은 와이파이의 아무나 닿는다 | `127.0.0.1:6380:6379` — 이 PC 에서만 |
+| 비밀번호 | 없음 | compose 가 `REDIS_PASSWORD` 를 `requirepass` 로 넘긴다 |
+
+⚠️ **아직 열려 있다** — `.env` 의 `REDIS_PASSWORD` 가 비어 있으면 redis 는 예전처럼
+인증 없이 뜬다. 값을 넣는 것은 사용자의 일이다(Claude 는 `.env` 를 쓰지 않는다).
+Oracle(`1521`)과 AI 서버(`8001`)도 같은 이유로 `127.0.0.1` 로 묶었다.
 
 ⚠️ **키 접두사가 코드 여섯 곳에 흩어져 있다** (논리적으로는 셋).
 `JwtAuthenticationFilter:31` 의 주석이 *「AuthServiceImpl과 동일하게 유지」* 라고
@@ -366,13 +383,15 @@ COMMIT;
 | `JWT_SECRET` | **Spring + FastAPI** | 🔴 두 서버가 같은 값이어야 한다. 다르면 AI 기능만 401 |
 | `GOOGLE_CLIENT_ID` `GOOGLE_SECRET_KEY` | Spring | OAuth2 |
 | `GOOGLE_EMAIL` `GOOGLE_EMAIL_SECRET_KEY` | Spring | Gmail 앱 비밀번호 |
-| `GEMINI_API_KEY` | FastAPI | |
+| `LLM_API_KEY` `LLM_BASE_URL` `LLM_MODEL` | FastAPI | 🔄 2026-09-01 에 `GEMINI_*` 에서 바뀌었다 — 제공자 이름을 변수명에 넣지 않는다 |
 | `SUPABASE_PROJECT_URL` `SUPABASE_PUBLISHABLE_SECRET_KEY` | FastAPI | 🔄 2026-09-01 에 **선택 필드로 바뀌었다** — 비워 둬도 서버가 뜬다. 읽는 코드는 아직 없다 (Phase 3) |
 | `DATA_PROBLEM_DIR` `DATA_ANSWER_DIR` | Spring | 기출 적재 경로 |
-| `REDIS_HOST` `REDIS_PORT` | 양쪽 | 🔴 **비워 둔다** — `.env.example` §5 참고 |
+| `REDIS_HOST` `REDIS_PORT` | 양쪽 | 🔴 **비워 둔다** — `.env.example` ⑤ 참고 |
+| `REDIS_PASSWORD` | **양쪽 + compose** | 🔄 **2026-09-15 부터 채워야 한다.** compose 가 `requirepass` 로 넘기고 두 서버가 같은 값으로 붙는다 |
 | `APP_FRONTEND_ORIGIN` | Spring | 🆕 프론트 주소의 **정본 한 곳**. CORS 허용 출처와 로그인 후 돌아갈 주소가 **둘 다 이 값에서 나온다** |
 | `APP_OAUTH2_CALLBACK_BASE` | Spring | 🆕 **백엔드 자신의** 콜백 주소 앞부분. 위와 성격이 다르다 — 구글 콘솔에 등록한 값과 같아야 한다 |
 | `JPA_SHOW_SQL` | Spring | 🆕 기본 **false**. 켜면 실행 SQL 이 바인딩 값(학생 이메일·답안 포함)과 함께 로그로 흐른다 |
+| `MAIL_MAX_SEND_PER_WINDOW` `MAIL_SEND_WINDOW_SECONDS` `MAIL_MAX_VERIFY_ATTEMPTS` | Spring | 🔄 **2026-09-15 신설.** 인증 메일·코드 입력 상한. ⚠️ **값은 사용자 결정 대기** (§7) |
 
 🔴 **`.env` 자체는 Claude 가 쓰지 않는다.** 새 키가 필요하면 사용자에게 요청한다.
 
@@ -393,7 +412,8 @@ Redis 가 그 경우다.
 | --- | --- |
 | RAG 벡터 저장소 스키마 (테이블·차원·메타데이터) | Phase 3 착수 시 |
 | 스키마 마이그레이션 도구 (지금은 `ddl-auto: update`) | 운영 데이터가 생기기 전 |
-| `PROBLEMS` 에 원본 `id` 컬럼을 추가할지 | 적재 멱등성을 손볼 때 |
+| ~~`PROBLEMS` 에 원본 `id` 컬럼을 추가할지~~ | ✅ **2026-09-09 에 추가됐다** — `SOURCE_ID` (UNIQUE). §2 참고 |
+| 인증 메일·코드 입력 상한 값 | 「몇 번 틀리면 잠그나」·「한 주소에 몇 통까지」. 지금은 잠정값 5·5 로 돌고 있다 |
 | AI 생성 문제의 검수 상태 컬럼 | 검수 절차가 정해진 뒤 |
 
 ---

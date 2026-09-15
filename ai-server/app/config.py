@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # ── Redis ─────────────────────────────────────────────────────────
     redis_host: str = "ailang-redis"
     redis_port: int = 6379
+    # 🔴 Redis 에 비밀번호를 걸면(docker-compose 의 requirepass) 이쪽도 같이 줘야 한다.
+    #    안 주면 챗봇 이력 읽기·쓰기가 NOAUTH 로 전부 실패한다.
+    #    값이 없으면 None 이고, 그때 redis 클라이언트는 인증 없이 붙는다 — 비밀번호를
+    #    아직 안 건 상태와 같다. 「안 걸었다」와 「걸었는데 값을 모른다」를 구분해야 하므로
+    #    빈 문자열이 아니라 None 으로 둔다.
+    redis_password: Optional[str] = None
 
     # ── JWT (Spring Boot 와 동일한 시크릿) ────────────────────────────
     jwt_secret: str

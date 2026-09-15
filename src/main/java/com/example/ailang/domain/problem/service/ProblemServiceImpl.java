@@ -27,6 +27,7 @@ import com.example.ailang.domain.user.repository.UserRepository;
 import com.example.ailang.global.client.AiServerClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -172,7 +173,13 @@ public class ProblemServiceImpl implements ProblemService {
      *
      * <p>🔴 삽입은 {@link UserChapterStatsCreator} 가 <b>별도 트랜잭션</b>에서 한다.
      * 같은 트랜잭션에서 유일 제약 위반을 잡으면 그 트랜잭션은 롤백밖에 못 하게 되므로,
-     * 「남이 먼저 만들었으면 그 행을 쓴다」를 여기서 할 수 없다.
+     * 「남이 먼저 만들었으면 그 행을 쓴다」를 그 안에서 할 수 없다.
+     *
+     * <p>🔴 <b>그래서 잡는 자리가 여기다.</b> 2026-09-11 에는 {@code Creator} 안에서 잡았는데,
+     * 삼켜도 그 트랜잭션은 이미 「롤백 전용」이라 <b>반환하면서 커밋할 때 다시 터졌다</b>
+     * ({@code UnexpectedRollbackException}). 학생이 보는 것은 똑같은 500 이었다.
+     * 실패를 삼키는 자리는 <b>그 실패가 일어난 트랜잭션 밖</b>이어야 한다 —
+     * {@code REQUIRES_NEW} 덕분에 이 바깥 트랜잭션은 그 실패에 물들지 않는다.
      *
      * <p>⚠️ 두 번째 조회까지 비어 있는 경우는 «있을 수 없는» 상태다. 만들기가 성공했거나
      * 제약 위반이 났거나 둘 중 하나이고, 제약 위반이면 다른 트랜잭션이 이미 커밋한 것이다.
@@ -185,7 +192,13 @@ public class ProblemServiceImpl implements ProblemService {
             return locked.get();
         }
 
-        userChapterStatsCreator.createIfAbsent(userId, chapterId);
+        try {
+            userChapterStatsCreator.create(userId, chapterId);
+        } catch (DataIntegrityViolationException e) {
+            // 🎯 실패가 아니다. 동시 제출이 «먼저» 만들었다는 뜻이고, 원하던 결과
+            //    (행이 존재함) 는 이미 이뤄졌다. 아래에서 그 행을 잠가 잡는다.
+            log.debug("통계 행이 이미 있음 (동시 제출) - userId={}, chapterId={}", userId, chapterId);
+        }
 
         return userChapterStatsRepository.findByUserIdAndChapterIdForUpdate(userId, chapterId)
                 .orElseThrow(() -> new IllegalStateException(

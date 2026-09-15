@@ -32,4 +32,19 @@ public class RedisServiceImpl implements RedisService {
     public boolean hasKey(String key) {
         return Boolean.TRUE.equals(stringRedisTemplate.hasKey(key));
     }
+
+    @Override
+    public long increment(String key, Duration ttlOnFirst) {
+        Long value = stringRedisTemplate.opsForValue().increment(key);
+        if (value == null) {
+            // 🔴 여기서 0 을 돌려주면 「셀 수 없었다」가 「아직 한 번도 안 했다」가 되어
+            //    제한이 통째로 열린다. 못 셌으면 못 셌다고 말한다.
+            throw new IllegalStateException("요청 횟수를 셀 수 없습니다: " + key);
+        }
+        if (value == 1L) {
+            // 처음 생긴 키에만 만료를 건다. 매번 걸면 계속 두드리는 쪽이 만료를 밀어낸다.
+            stringRedisTemplate.expire(key, ttlOnFirst);
+        }
+        return value;
+    }
 }
