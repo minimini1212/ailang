@@ -1,17 +1,7 @@
 from langchain_core.messages import HumanMessage
-from app.llm_call import ask
 
-# 학년 코드를 한국어 학년명으로 변환하는 매핑
-GRADE_DISPLAY = {
-    "ELEM_3": "초등학교 3학년",
-    "ELEM_4": "초등학교 4학년",
-    "ELEM_5": "초등학교 5학년",
-    "ELEM_6": "초등학교 6학년",
-    "MIDDLE_1": "중학교 1학년",
-    "MIDDLE_2": "중학교 2학년",
-    "MIDDLE_3": "중학교 3학년",
-    "HIGH_1": "고등학교 1학년",
-}
+from app.llm_call import ask
+from app.vocabulary import grade_name
 
 
 class ConceptService:
@@ -22,16 +12,16 @@ class ConceptService:
     """
 
     async def explain(self, question: str, grade: str, chapter_title: str) -> str:
-        grade_name = GRADE_DISPLAY.get(grade, grade)
+        grade_display = grade_name(grade)
 
         # 학년, 챕터, 문제를 프롬프트에 주입해 개념 설명 요청
         prompt = f"""당신은 수학 전문 강사입니다.
 
-학생 학년: {grade_name}
+학생 학년: {grade_display}
 단원: {chapter_title}
 문제: {question}
 
-위 문제와 관련된 핵심 수학 개념을 {grade_name} 수준에 맞게 설명해주세요.
+위 문제와 관련된 핵심 수학 개념을 {grade_display} 수준에 맞게 설명해주세요.
 
 설명 시 다음을 포함해주세요:
 1. 핵심 개념 정의 (쉬운 언어로)

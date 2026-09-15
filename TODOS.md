@@ -239,22 +239,16 @@ DB 가 없으면 **조용히 통과하지 않고 건너뛴다.**
 
 ## 4. 설정·환경 🟡
 
-- [ ] 🔴 **학년 여덟 값이 «다섯 곳» 에 각각 적혀 있다** — 🆕 2026-09-16 실측.
-      정본은 `Grade` enum 하나인데, 같은 목록이 네 곳에 더 있다.
+- [ ] **학년 여덟 값이 «세 곳» 에 각각 적혀 있다** — 🔄 2026-09-16 에 다섯 → 셋으로 줄였다.
       ```
       domain/user/enums/Grade.java              ← 정본
-      ai-server/app/services/concept_service.py    GRADE_DISPLAY
-      ai-server/app/services/problem_service.py    GRADE_DISPLAY
-      (화면) src/types/api.types.ts                Grade union
-      (화면) src/constants/grades.ts               ALL_GRADES + 이름표 2벌
+      ai-server/app/vocabulary.py                  GRADE_DISPLAY  (파이썬 2곳을 합쳤다)
+      (화면) src/types/api.types.ts + grades.ts    Grade union + 이름표 (같이 움직인다)
       ```
-      🔴 **파이썬 두 곳은 빠뜨려도 조용히 넘어간다** — `GRADE_DISPLAY.get(grade, grade)`
-      가 못 찾으면 학년 «코드» 를 그대로 프롬프트에 넣는다. 모델은 「MIDDLE_4 학년
-      수준으로 설명해 달라」를 받게 되고, 아무 데서도 에러가 안 난다.
-      ⚠️ 화면 두 곳은 타입이 잡아 준다 — `Record<Grade, string>` 이라 이름표가 빠지면
-      컴파일이 안 된다. **즉 위험한 것은 파이썬 쪽 둘이다.**
-      🧭 고치는 방향은 정해야 한다 — FastAPI 가 학년명을 Spring 에게서 «받을지»,
-      아니면 어휘 파일을 공유할지. 서버를 나눈 대가라 공짜 해법이 없다.
+      ⚠️ **남은 것은 「서버를 나눈 대가」 자체라 공짜 해법이 없다.** FastAPI 가 학년명을
+      Spring 에게서 «받을지», 어휘 파일을 공유할지는 정해야 한다.
+      🎯 **다만 위험한 절반은 닫혔다** — 어긋나면 이제 «조용히 넘어가지 않고 거부한다».
+      빠뜨린 학년이 있으면 그 요청이 실패하므로 눈에 띈다.
 - [ ] **springdoc 도입 검토** — [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) 를 손으로
       관리하고 있다. ⚠️ 손 문서는 낡는다 (이미 한 번 낡았다). 자동 생성으로 바꿀지 정한다
       (8절).
@@ -301,7 +295,7 @@ DB 가 없으면 **조용히 통과하지 않고 건너뛴다.**
 
 ## 5. 검사 — 🔴 지금 근거가 없다
 
-🔄 **2026-09-15 기준 검사 241건 — 실제로 돌려서 전부 통과했다** (실패 0 · 오류 0 · 건너뜀 0).
+🔄 **2026-09-16 기준 검사 273건 — 실제로 돌려서 전부 통과했다** (실패 0 · 오류 0 · 건너뜀 0).
 
 ```
 Java (./gradlew test)                                           123건
@@ -312,11 +306,12 @@ Java (./gradlew test)                                           123건
   실제 DB·스프링 전체가 필요한 것                                  11
     경로별 인가 7 · 동시 제출 2 · 원본 id 중복 차단 1 · 컨텍스트 로딩 1
 
-Python (ai-server, pytest)                                       78건
-  응답 파싱·깨진 수식 복원                                        20
+Python (ai-server, pytest)                                      110건
   저장 전 계약 (타입·빠진 항목·어휘·컬럼 한계·보기 번호)          25
+  응답 파싱·깨진 수식 복원                                        20
   실패를 네 종류로 나누기 · 응답 본문 변환                        19
   경계와 상태 코드 (학생 토큰 차단 · 429/502/503)                 14
+  학년·난이도 어휘 (🔄 모르는 값을 «거부» 하는가)                 32
 
 화면 (C:\webStorm_workspace\ailang, vitest)                      40건
   수식 구간 나누기                                                20

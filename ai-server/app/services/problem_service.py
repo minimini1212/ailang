@@ -3,24 +3,7 @@ import re
 from langchain_core.messages import HumanMessage
 from app.exceptions import LlmBadResponseException
 from app.llm_call import ask
-
-# 학년 코드를 한국어 학년명으로 변환
-GRADE_DISPLAY = {
-    "ELEM_3": "초등학교 3학년",
-    "ELEM_4": "초등학교 4학년",
-    "ELEM_5": "초등학교 5학년",
-    "ELEM_6": "초등학교 6학년",
-    "MIDDLE_1": "중학교 1학년",
-    "MIDDLE_2": "중학교 2학년",
-    "MIDDLE_3": "중학교 3학년",
-    "HIGH_1": "고등학교 1학년",
-}
-
-DIFFICULTY_DISPLAY = {
-    "LOW": "쉬운",
-    "MEDIUM": "중간",
-    "HIGH": "어려운",
-}
+from app.vocabulary import difficulty_name, grade_name
 
 
 class AiProblemService:
@@ -31,19 +14,18 @@ class AiProblemService:
     """
 
     async def generate(self, chapter_title: str, difficulty: str, grade: str) -> dict:
-        grade_name = GRADE_DISPLAY.get(grade, grade)
-        # 🔴 어휘 밖의 값을 기본값으로 접지 않는다. 조용히 「중간」으로 바꿔치기하면
-        #    프롬프트는 중간 문제를 만드는데 저장은 요청한 난이도로 되어 어긋난다
-        #    (docs/rules/ai-call-policy.md).
-        if difficulty not in DIFFICULTY_DISPLAY:
-            raise LlmBadResponseException(f"알 수 없는 난이도: {difficulty}")
-        difficulty_name = DIFFICULTY_DISPLAY[difficulty]
+        # 🔴 어휘 밖의 값을 기본값으로 접지 않는다 — 둘 다 모르면 «거부» 한다.
+        #    ⚠️ 학년 쪽은 2026-09-16 까지 GRADE_DISPLAY.get(grade, grade) 로 «접고»
+        #       있었다. 바로 아래 난이도와 정책이 반대였던 셈이다.
+        #    왜 그러면 안 되는지: app/vocabulary.py
+        grade_display = grade_name(grade)
+        difficulty_display = difficulty_name(difficulty)
 
         prompt = f"""당신은 수학 문제 출제 전문가입니다.
 
-학생 학년: {grade_name}
+학생 학년: {grade_display}
 단원: {chapter_title}
-난이도: {difficulty_name}
+난이도: {difficulty_display}
 
 위 조건에 맞는 수학 객관식 문제를 1개 만들어주세요.
 반드시 아래 JSON 형식으로만 응답하세요. JSON 외 다른 텍스트는 절대 포함하지 마세요.
