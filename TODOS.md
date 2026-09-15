@@ -239,6 +239,22 @@ DB 가 없으면 **조용히 통과하지 않고 건너뛴다.**
 
 ## 4. 설정·환경 🟡
 
+- [ ] 🔴 **학년 여덟 값이 «다섯 곳» 에 각각 적혀 있다** — 🆕 2026-09-16 실측.
+      정본은 `Grade` enum 하나인데, 같은 목록이 네 곳에 더 있다.
+      ```
+      domain/user/enums/Grade.java              ← 정본
+      ai-server/app/services/concept_service.py    GRADE_DISPLAY
+      ai-server/app/services/problem_service.py    GRADE_DISPLAY
+      (화면) src/types/api.types.ts                Grade union
+      (화면) src/constants/grades.ts               ALL_GRADES + 이름표 2벌
+      ```
+      🔴 **파이썬 두 곳은 빠뜨려도 조용히 넘어간다** — `GRADE_DISPLAY.get(grade, grade)`
+      가 못 찾으면 학년 «코드» 를 그대로 프롬프트에 넣는다. 모델은 「MIDDLE_4 학년
+      수준으로 설명해 달라」를 받게 되고, 아무 데서도 에러가 안 난다.
+      ⚠️ 화면 두 곳은 타입이 잡아 준다 — `Record<Grade, string>` 이라 이름표가 빠지면
+      컴파일이 안 된다. **즉 위험한 것은 파이썬 쪽 둘이다.**
+      🧭 고치는 방향은 정해야 한다 — FastAPI 가 학년명을 Spring 에게서 «받을지»,
+      아니면 어휘 파일을 공유할지. 서버를 나눈 대가라 공짜 해법이 없다.
 - [ ] **springdoc 도입 검토** — [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) 를 손으로
       관리하고 있다. ⚠️ 손 문서는 낡는다 (이미 한 번 낡았다). 자동 생성으로 바꿀지 정한다
       (8절).
