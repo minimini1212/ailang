@@ -159,7 +159,7 @@ services/          🎯 프롬프트가 사는 자리
 
 | 파일 | 무엇 | 알아야 할 것 |
 | --- | --- | --- |
-| `global/config/SecurityConfig` | 경로별 인증 규칙·CORS | 🔴 **역할(ADMIN) 규칙이 하나도 없다.** `GET /api/chapters` 만 열려 있다. CORS 허용 출처는 `APP_FRONTEND_ORIGIN` 하나에서 온다 (2026-09-15) |
+| `global/config/SecurityConfig` | 경로별 인증 규칙·CORS | 🔴 **역할(ADMIN) 규칙이 하나도 없다.** `GET /api/chapters` 만 열려 있다. 🔄 2026-09-11: CORS 허용 출처가 `app.frontend.origin` 설정값이 됐다 (종전 리터럴) |
 | `global/security/filter/JwtAuthenticationFilter` | 쿠키 토큰 검증 + 블랙리스트 | 🎯 토큰이 없으면 그냥 통과시킨다 — 거부는 `SecurityConfig` 몫 |
 | `global/jwt/JwtTokenProvider` · `TokenType` | 토큰 발급·파싱·**종류 확인** | jjwt 0.11.2 (옛 API). 🔴 `typ` 클레임(ACCESS/REFRESH/SERVICE)이 쓰이는 자리마다 요구된다 |
 | `global/client/AiServerClient` | 🎯 **FastAPI 를 부르는 유일한 자리** | 서비스 토큰을 붙이고, AI 실패를 429·502·503 으로 보존한다 |

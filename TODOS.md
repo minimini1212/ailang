@@ -234,25 +234,31 @@ DB 가 없으면 **조용히 통과하지 않고 건너뛴다.**
 ## 4. 설정·환경 🟡
 
 - [ ] **springdoc 도입 검토** — [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) 를 손으로
-      관리하고 있다. ⚠️ 손 문서는 낡는다 (이미 한 번 낡았다). 자동 생성으로 바꿀지 정한다.
-- [ ] **DB 접속 주소와 메일 서버 주소가 아직 리터럴이다** — `jdbc:...@localhost:1521/FREEPDB1`
-      과 `smtp.gmail.com`. 계정·비번은 환경변수인데 주소만 코드에 있다. 배포 대상이
-      정해지면 같이 본다 (8절).
+      관리하고 있다. ⚠️ 손 문서는 낡는다 (이미 한 번 낡았다). 자동 생성으로 바꿀지 정한다
+      (8절).
+- [ ] **`ddl-auto: update` 를 언제까지 쓸 것인가** — ⚠️ 마이그레이션 도구 결정(8절).
+      운영 데이터가 생기기 전에 정해야 한다.
 
-### ✅ 설정에서 이번에 닫힌 것 (2026-09-15)
+### ✅ 이번에 닫힌 것 (2026-09-11)
 
 | 무엇 | 결과 |
 | --- | --- |
-| 프론트 주소가 **두 곳에** 문자열로 (CORS · 로그인 후 리다이렉트) | `APP_FRONTEND_ORIGIN` 하나를 두 곳이 본다. 쉼표로 여러 개 가능 |
-| 백엔드 자신의 구글 콜백 주소도 리터럴 | `APP_BACKEND_ORIGIN`. ⚠️ 구글 콘솔의 「승인된 리디렉션 URI」와 글자까지 같아야 한다 |
-| `show-sql: true` — 운영 로그에 **학생 이메일과 답안**이 실린다 | 기본 `false`. `JPA_SHOW_SQL` 로만 켠다 |
-| Dockerfile 에 개발용 `--reload` | 뺐다. 개발은 compose 에서 덮어쓴다 |
+| 프론트 주소가 두 곳에 리터럴 | `APP_FRONTEND_ORIGIN` **한 키**로. CORS 허용 출처와 로그인 리다이렉트가 같은 값에서 나온다 → [DATA_CONTRACT](docs/DATA_CONTRACT.md) §6 |
+| 백엔드 콜백 주소도 리터럴 | `APP_OAUTH2_CALLBACK_BASE` 로 분리 — 프론트 주소와 **성격이 다른 값**이라 키를 따로 뒀다 |
+| DB 접속 주소만 리터럴 | `DB_URL` 로. 계정·비번만 환경변수여서 「비밀은 뺐는데 접속은 내 PC 로 간다」였다 |
+| 운영에서 SQL 전문이 찍힘 | `JPA_SHOW_SQL` 기본 **false**. 바인딩 값에 학생 이메일·답안이 들어 있었다 |
+| 이미지에 개발 옵션 `--reload` | 제거. 🎯 소스를 마운트하지 않는 이미지라 **감시 비용만 내고 얻는 게 0** 이었다. 개발용은 compose 주석으로 옮겼다 |
 
-> 🔄 **2026-09-15: 아래 넷은 «이미 끝나 있었는데» 상자만 열려 있어 지웠다.**
-> 적재 경로 하드코딩(커밋 `6615ba4` 에서 환경변수화) · `CHAPTERS(grade,title)` 유니크 제약
-> (`UK_CHAPTERS_GRADE_TITLE` 로 걸려 있다) · `requirements.txt` 의 `pydantic-settings`
-> (있다) 와 `google-api-core`(`ResourceExhausted` 를 더 이상 import 하지 않아 필요 없다) ·
-> 「문제 없는 챕터 2개」(**0개다**). 셋은 코드로, 하나는 DB 조회로 확인했다.
+### ✅ 지난 세션에 이미 닫혀 있던 것 (상자만 남아 있었다)
+
+🔴 **체크 안 된 상자는 근거가 아니다** — 코드로 확인해 접었다 (2026-09-11).
+
+| 무엇 | 실제 상태 |
+| --- | --- |
+| 적재 경로 하드코딩 | 이미 `DATA_PROBLEM_DIR`·`DATA_ANSWER_DIR` 로 빠져 있었다 (`6615ba4`) |
+| `requirements.txt` 누락 | `pydantic-settings` 는 이미 명시돼 있다. `google-api-core` 는 **필요 자체가 없어졌다** — 제공자를 OpenAI 호환으로 바꿀 때 `ResourceExhausted` import 가 사라졌다 (`42a5c35`) |
+| `CHAPTERS(grade,title)` 유니크 제약 | 이미 `UK_CHAPTERS_GRADE_TITLE` 로 걸려 있다 (`e22da4e`) |
+| 문제 없는 챕터 2개 · `HTE_*` 표 5개 | 0절에 같은 항목이 있다 — 중복을 지우고 0절만 남겼다 |
 
 ### ✅ 적재에서 이번에 닫힌 것 (2026-09-02)
 

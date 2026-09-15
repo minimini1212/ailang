@@ -97,8 +97,10 @@
 
 ### 구글 로그인
 
-`GET /oauth2/authorization/google` → 구글 → 성공 시 `http://localhost:5173/oauth2/callback`
+`GET /oauth2/authorization/google` → 구글 → 성공 시 **`{APP_FRONTEND_ORIGIN}/oauth2/callback`**
 로 리다이렉트(쿠키 발급), 실패 시 `?error={메시지}`.
+🔄 *2026-09-11: 주소가 설정값이 됐다.* 개발 기본값은 `http://localhost:5173` 이고,
+CORS 허용 출처도 **같은 키**에서 나온다 → [`DATA_CONTRACT.md`](DATA_CONTRACT.md) §6.
 
 🔴 **구글 가입은 학년을 받지 않는다.** `USERS.GRADE` 가 null 인 유저가 여기서 생긴다.
 학년을 쓰는 엔드포인트 다섯 개는 그 유저에게 **400 「학년을 먼저 설정해 주세요」**를 준다

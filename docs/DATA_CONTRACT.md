@@ -379,20 +379,26 @@ Oracle(`1521`)과 AI 서버(`8001`)도 같은 이유로 `127.0.0.1` 로 묶었�
 | 그룹 | 읽는 쪽 | 비고 |
 | --- | --- | --- |
 | `DB_USERNAME` `DB_PASSWORD` | Spring | Oracle 접속 |
+| `DB_URL` | Spring | 🆕 Oracle 접속 «주소». 비우면 `localhost:1521/FREEPDB1` |
 | `JWT_SECRET` | **Spring + FastAPI** | 🔴 두 서버가 같은 값이어야 한다. 다르면 AI 기능만 401 |
 | `GOOGLE_CLIENT_ID` `GOOGLE_SECRET_KEY` | Spring | OAuth2 |
 | `GOOGLE_EMAIL` `GOOGLE_EMAIL_SECRET_KEY` | Spring | Gmail 앱 비밀번호 |
 | `LLM_API_KEY` `LLM_BASE_URL` `LLM_MODEL` | FastAPI | 🔄 2026-09-01 에 `GEMINI_*` 에서 바뀌었다 — 제공자 이름을 변수명에 넣지 않는다 |
-| `SUPABASE_PROJECT_URL` `SUPABASE_PUBLISHABLE_SECRET_KEY` | FastAPI | ⬜ 읽는 코드가 없다 (Phase 3). 🔄 2026-09-01 에 **선택 필드로** 바뀌어, 비어 있어도 서버가 뜬다 |
+| `SUPABASE_PROJECT_URL` `SUPABASE_PUBLISHABLE_SECRET_KEY` | FastAPI | 🔄 2026-09-01 에 **선택 필드로 바뀌었다** — 비워 둬도 서버가 뜬다. 읽는 코드는 아직 없다 (Phase 3) |
 | `DATA_PROBLEM_DIR` `DATA_ANSWER_DIR` | Spring | 기출 적재 경로 |
 | `REDIS_HOST` `REDIS_PORT` | 양쪽 | 🔴 **비워 둔다** — `.env.example` ⑤ 참고 |
 | `REDIS_PASSWORD` | **양쪽 + compose** | 🔄 **2026-09-15 부터 채워야 한다.** compose 가 `requirepass` 로 넘기고 두 서버가 같은 값으로 붙는다 |
-| `APP_FRONTEND_ORIGIN` | Spring | 🔄 **2026-09-15 신설.** CORS 허용 출처 + 로그인 후 돌아갈 주소. 쉼표로 여러 개 |
-| `APP_BACKEND_ORIGIN` | Spring | 🔄 **2026-09-15 신설.** 백엔드 자신의 구글 콜백 주소. ⚠️ 구글 콘솔의 「승인된 리디렉션 URI」와 글자까지 같아야 한다 |
+| `APP_FRONTEND_ORIGIN` | Spring | 🆕 프론트 주소의 **정본 한 곳**. CORS 허용 출처와 로그인 후 돌아갈 주소가 **둘 다 이 값에서 나온다** |
+| `APP_OAUTH2_CALLBACK_BASE` | Spring | 🆕 **백엔드 자신의** 콜백 주소 앞부분. 위와 성격이 다르다 — 구글 콘솔에 등록한 값과 같아야 한다 |
+| `JPA_SHOW_SQL` | Spring | 🆕 기본 **false**. 켜면 실행 SQL 이 바인딩 값(학생 이메일·답안 포함)과 함께 로그로 흐른다 |
 | `MAIL_MAX_SEND_PER_WINDOW` `MAIL_SEND_WINDOW_SECONDS` `MAIL_MAX_VERIFY_ATTEMPTS` | Spring | 🔄 **2026-09-15 신설.** 인증 메일·코드 입력 상한. ⚠️ **값은 사용자 결정 대기** (§7) |
-| `JPA_SHOW_SQL` | Spring | 🔴 운영에서 켜지 않는다 — SQL 전문에 학생 이메일과 답안이 실린다. 기본 `false` |
 
 🔴 **`.env` 자체는 Claude 가 쓰지 않는다.** 새 키가 필요하면 사용자에게 요청한다.
+
+🎯 **주소가 반복되던 자리를 한 곳으로 모았다** (2026-09-11). 종전에는 `http://localhost:5173`
+이 `SecurityConfig`(CORS) 와 `application.yml`(로그인 후 리다이렉트) 두 곳에 **각각 리터럴**로
+있었다. 한쪽만 고치면 「로그인은 되는데 화면이 응답을 못 받는」 상태가 되고, 증상이 로그인
+쪽에 나타나므로 원인을 CORS 에서 찾지 않게 된다.
 
 ⚠️ **한 `.env` 를 두 서버가 읽는다.** Spring 은 `springboot4-dotenv` 로, FastAPI 는
 compose 의 `env_file` 로. 그래서 **같은 이름인데 두 서버에 필요한 값이 다른 키**가 생긴다.

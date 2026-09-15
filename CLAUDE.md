@@ -163,8 +163,13 @@ This is the defect the product's whole value rests on.
 - **Internal service calls are not user tokens.** `AiServerClient` mints an access token for the
   fabricated subject `service@internal` using the same key and the same claims as a student's
   token. A service identity needs its own claim, and the AI server should require it.
-- **CORS and the OAuth redirect target are config, not literals** — `http://localhost:5173`
-  appears in both `SecurityConfig` and `application.yml`.
+- **CORS and the OAuth redirect target are config, not literals.**
+  🔄 *Fixed 2026-09-11.* Both now derive from a single key, `app.frontend.origin`
+  (`APP_FRONTEND_ORIGIN`); the backend's own callback base is a **separate** key,
+  `APP_OAUTH2_CALLBACK_BASE`, because it is a different address with a different owner.
+  The rule stands for the next address: **one key, every reader** — the failure it prevents is
+  "login succeeds but the screen never receives the response", whose symptom points at login
+  and not at CORS. Key list: `.env.example` ⑧ · `docs/DATA_CONTRACT.md` §6.
 
 ---
 
@@ -185,7 +190,29 @@ measured.
 ## Working rules
 
 - **One step at a time.** Don't implement several phases because they seem related.
-- **The user pushes. Claude commits only when explicitly asked, and never pushes.**
+- **One branch per piece of work — not per change.** Cut a task branch from the current work
+  branch; never commit directly to `main`.
+  🔄 *Sized 2026-09-11 by the user: branches were being cut far too fine — one of them carried
+  a twelve-line edit to this file and nothing else.*
+  The unit is **what one person would review and verify in a single sitting** — usually one
+  `TODOS.md` section, or one coherent theme. Not one bullet, one file, or one rule tweak.
+  - A **doc or rule change rides along** with the work that motivated it. It never gets its own
+    branch. *(This very rule was committed onto the branch that already owned the push rules.)*
+  - A **fix and the tests that pin it are one branch.** If two changes are checked by the same
+    test run, they ship together.
+  - **Split only when the parts would be reviewed, reverted, or merged separately** — config
+    with no behaviour change is not the same review as a change inside the grading path.
+  - ⚠️ Too coarse has its own cost: if you cannot say in one line what the branch is for, or a
+    reviewer would have to hold two unrelated failures in their head, it is two branches.
+- 🔄 **Claude pushes the task branch when the task is finished.** *Changed 2026-09-11 — this
+  line previously read "The user pushes … and never pushes."* What did **not** change:
+  Claude commits only when asked, **never pushes to `main`**, never force-pushes, and never
+  opens or merges a pull request unless asked. A push publishes the work; if the branch is not
+  actually finished, say so and don't push.
+- **Say what was verified and what was not, in the commit message.** This machine has neither a
+  JDK nor a running Docker, so a session may be unable to compile or run the tests it wrote.
+  🔴 **An unverified change must be labelled unverified** — a green-looking commit that nobody
+  built is the same failure mode as a stale document.
 - **Business logic is pure functions or entity methods** (grading, difficulty transitions,
   answer normalisation, LaTeX handling) so it can be tested without a DB or a network.
 - **Fix the source, not the symptom.** If a rule above names a defect, fixing that one call site
@@ -305,8 +332,10 @@ change a decision
 
 ⚠️ **This repo repeats config in five places.** A port, a URL, or a model name changes in
 `application.yml`, `docker-compose.yml`, `.env.example`, `ai-server/app/config.py`, and the docs.
-Redis is already `6380` on the host and `6379` inside the network; the frontend origin is written
-twice. Grep before you believe you changed it once.
+Redis is already `6380` on the host and `6379` inside the network. Grep before you believe you
+changed it once.
+🔄 *2026-09-11: the frontend origin used to be the standing example here — it was written twice
+and is now one key. That is what resolving a hit looks like; the warning itself still holds.*
 
 ### Reviews leave their original (HARD)
 
