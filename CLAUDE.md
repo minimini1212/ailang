@@ -59,29 +59,33 @@ This is the defect the product's whole value rests on.
   tab can make every answer correct. It is documented as 자가채점 for 단답형; that is a **product
   decision that has not been re-approved**, and until it is, no new endpoint may copy the pattern.
 - **The answer never leaves the server before submission.**
-  `GET /api/problems/{id}/answer` currently does not check `problemType`, so it hands out
-  **객관식 answers too** — before the student has submitted anything. Any endpoint that returns
+  🔄 *Fixed 2026-09-02 — `GET /api/problems/{id}/answer` now serves `SHORT_ANSWER` only.*
+  It used to ignore `problemType` and hand out **객관식 answers too**, before the student had
+  submitted anything. The rule stands: any endpoint that returns
   `answer` or `explanation` must state, in code, which problem types and which lifecycle stage
   it is for.
-- **Every write must verify the ids belong together.** `submitAnswer` takes `problemId` from the
-  path and `chapterId` from the body and never checks that the problem is in that chapter, so a
-  request can pile correct answers onto a chapter the student never opened.
+- **Every write must verify the ids belong together.**
+  🔄 *Fixed 2026-09-02.* `submitAnswer` takes `problemId` from the path and `chapterId` from
+  the body; it used to skip the relation check, so a request could pile correct answers onto a
+  chapter the student never opened.
   🎯 **Rule: whenever a request carries two ids, the server proves the relation before writing.**
 - Grading, difficulty transitions, and statistics are **pure functions or entity methods** —
   never inline in a controller — so they can be tested without a DB.
 
 ### 🔴 Never fold "unknown" into a value
 
-- **「안 풀었다」 ≠ 「틀렸다」.** `isCorrect = Boolean.TRUE.equals(request.getSelfJudge())`
-  turns a missing field into a recorded 오답. A student's 정답률 — the input to the difficulty
-  algorithm — then drops because of a frontend bug. **A missing verdict is a rejected request
-  (400), not a wrong answer.**
+- **「안 풀었다」 ≠ 「틀렸다」.** **A missing verdict is a rejected request (400), not a
+  wrong answer.** 🔄 *Fixed 2026-09-02.* The code read
+  `Boolean.TRUE.equals(request.getSelfJudge())`, which turns a missing field into a recorded
+  오답 — a frontend bug would quietly drag a student's 정답률 down, and 정답률 is what picks
+  their next problem.
 - **`totalCount < 3` is not "이 학생은 못한다".** It is *"아직 모른다"*, which is why the
   algorithm holds difficulty there. Do not add a code path that treats it as a low score.
 - **`grade == null` is not ELEM_3.** `User.grade` is nullable (Google OAuth signup does not
-  collect it). Reading it with `user.getGrade().name()` throws NPE in
-  `getRandomProblemByGrade`, `getAssessmentProblems`, and `getConcept`. Handle the unknown
-  state; never substitute a default.
+  collect it). Handle the unknown state; never substitute a default.
+  🔄 *Fixed 2026-09-10.* `user.getGrade().name()` sat in five places and threw NPE → 500.
+  It now goes through one function (`UserGrades`) that returns a 400 telling the student to set
+  their grade, and 마이페이지 gives them somewhere to set it.
 - 🔴 **When a field needs three states, do not use a boolean.** Applies to grading results, AI
   call outcomes, and data-load outcomes alike.
 
@@ -100,18 +104,24 @@ This is the defect the product's whole value rests on.
 
 ### External model calls (Gemini) — details in `docs/rules/ai-call-policy.md`
 
-- 🔴 **Never inside a transaction.** `getAiProblem` is `@Transactional` and makes a multi-second
-  HTTP call inside it, holding an Oracle connection the whole time. Open the transaction at the
-  save, not around the call.
-- 🔴 **Every outbound call has a connect timeout and a read timeout.** The shared `RestTemplate`
-  has neither, so an AI server that accepts the connection and never answers pins a Tomcat
-  thread forever.
+- 🔴 **Never inside a transaction.** Open the transaction at the save, not around the call.
+  🔄 *Fixed 2026-09-01.* `getAiProblem` was `@Transactional` around a 13-second HTTP call,
+  holding an Oracle connection the whole time. The DB work moved to `AiProblemStore` and the
+  method is now `NOT_SUPPORTED` — ⚠️ **declaring that explicitly matters**: a class-level
+  `@Transactional(readOnly = true)` would otherwise keep a transaction open across the call.
+- 🔴 **Every outbound call has a connect timeout and a read timeout.**
+  🔄 *Fixed 2026-09-01 — connect 5s, read 60s, both config keys.* The shared `RestTemplate`
+  had neither, so an AI server that accepts the connection and never answers pinned a Tomcat
+  thread forever. ⚠️ The read timeout is long because measured AI responses are 13–19 seconds.
 - 🔴 **Preserve the failure kind across the hop.** FastAPI correctly returns `429` for a Gemini
-  quota exception; Spring's `RestTemplate` throws, and `GlobalExceptionHandler`'s
-  `RuntimeException` branch rewrites it to `500`. **Quota exhausted, model refused, malformed
-  JSON, and server down are four different states** — the student sees one useless message today.
-- 🔴 **Never send personal data to the model.** Today the prompt carries 학년·단원명·문제 본문
-  and nothing else. Keep it that way: no email, no nickname, no user id, no answer history.
+  **Quota exhausted, model refused, malformed JSON, and server down are four different states.**
+  🔄 *Fixed 2026-09-01.* FastAPI returned `429` correctly, then Spring's `RestTemplate` threw
+  and `GlobalExceptionHandler`'s `RuntimeException` branch rewrote it to `500`, so the student
+  saw one useless message. `AiServerClient` now preserves `429`/`502`/`503`.
+- 🔴 **Never send personal data to the model.** The prompt carries 학년 · 단원명+유형 · 문제 본문
+  and nothing else (🔄 유형 joined 2026-09-09 — 대단원 8개 alone was too coarse for concept
+  explanations). Keep it that way: no email, no nickname, no user id, no answer history.
+  ⚠️ Re-check this list whenever a request DTO to the AI server gains a field.
 - **A generated payload is untrusted input.** Validate it against the column limits before
   saving — `PROBLEMS.OPTIONS` is `VARCHAR2(1000)` and four LaTeX-bearing 보기 can exceed it.
 - **Prompts live in one place per service**, not scattered across call sites.
@@ -121,13 +131,14 @@ This is the defect the product's whole value rests on.
 - **Secrets are never hardcoded** — `.env` / env vars only.
   **Claude never writes `.env`.** Ask the user; they add it themselves. The key list's truth is
   `.env.example`.
-- 🔴 **No absolute machine paths in committed config.** `application.yml` shipped
-  `C:/Users/USER/OneDrive/Desktop/…` as the data-load directory, so every other machine loads
-  zero problems and only logs a warning. **Paths, intervals, limits, and model names are config,
-  not code.**
+- 🔴 **No absolute machine paths in committed config.** **Paths, intervals, limits, and model
+  names are config, not code.** 🔄 *Fixed `6615ba4`.* `application.yml` shipped
+  `C:/Users/USER/OneDrive/Desktop/…` as the data-load directory, so every other machine loaded
+  zero problems and only logged a warning. ⚠️ That warning-not-error behaviour is **still** how a
+  wrong path fails — check the insert count in the boot log.
 - 🔴 **`ddl-auto` is `update` today.** It must never be `create` or `create-drop`, and moving to
   a migration tool is a decision for the user, not a side effect of another task.
-- **`DataLoader` runs at every boot.** Its only guard is `problemRepository.count() > 0`. Do not
+- **`DataLoader` runs at every boot.** Its only guard is `countBySourceType(REAL) > 0`. Do not
   add a loader that writes without an equally explicit guard, and never make one that deletes.
 - **No student personal data leaves the system.** Email exists for auth only; it is never a
   prompt input, a log line in production, or a query parameter.
@@ -135,18 +146,25 @@ This is the defect the product's whole value rests on.
 ### Correctness
 
 - **Writes are idempotent.** Re-running `DataLoader` over the same directory must not duplicate
-  problems or chapters. The current guard is all-or-nothing (`count() > 0`), which means a
-  partially loaded set can never be completed — the real key is the AI Hub `id`, and moving to it
-  is recorded in `TODOS.md`.
+  problems or chapters. The guard is all-or-nothing (`countBySourceType(REAL) > 0`), so a
+  partially loaded set can never be completed. The real key is the AI Hub `id` — the column
+  exists (`PROBLEMS.SOURCE_ID`, UNIQUE) but the guard does not use it.
+  ⚠️ Moving to it is **a decision, not a cleanup**: per-record checking means re-reading ~2,300
+  JSON files on every boot. It is in `TODOS.md` §8, and the idempotency test is blocked on it.
 - **Persist failures with their kind.** `DataLoader` collapses "답안 파일 없음", "학년 코드 모름",
   "정답 추출 실패", and "파싱 예외" into one `skipped` counter, so *which* 문제 need fixing is
   unknowable. Success, skipped-for-reason-X, and failed are not one number.
 - **Concurrent submissions must not violate the unique constraint.**
-  🔄 *Fixed 2026-09-11 — `submitAnswer` now takes the row lock **first**, then reads history,
-  then records.* The rule generalises: **whenever a write is "read, then modify", take the lock
-  before the read that decides the write**, and do the *create* in its own transaction — catching
-  a constraint violation inside the same transaction leaves you able only to roll back.
-  🔴 And never hold such a lock across an outbound call. Details: `docs/rules/grading-and-difficulty.md` R10.
+  🔄 *Fixed 2026-09-11, and **the fix did not work until 2026-09-15**.* The rule generalises:
+  **whenever a write is "read, then modify", take the lock before the read that decides the
+  write**, and do the *create* in its own transaction.
+  🔴 **And catch the failure outside that transaction, not inside it.** Swallowing a constraint
+  violation in the `REQUIRES_NEW` method itself looks right and is not: the transaction is
+  already marked rollback-only, so returning normally makes the commit throw
+  `UnexpectedRollbackException` at the caller. **The exception changes name; the 500 does not.**
+  That stood for four days behind a comment that said the student no longer sees it.
+  🔴 And never hold such a lock across an outbound call.
+  Details: `docs/rules/grading-and-difficulty.md` R10 · **R10-1**.
 - **Trust measurements over docs** for data shape and distributions. Query the real tables before
   writing a query that defines a segment or a denominator.
 - **Errors must say which user / problem / chapter / URL failed and why.**
@@ -154,15 +172,23 @@ This is the defect the product's whole value rests on.
 ### Auth and session
 
 - 🔴 **A per-user resource is keyed by the authenticated user, never by a client-supplied id.**
-  The chat history key is `ailang:chat:{session_id}` where `session_id` comes from the request
-  body, and `RagService.answer()` receives `user_id` and does not use it. Any logged-in user can
-  read another student's conversation by supplying their session id.
+  🔄 *Fixed 2026-09-01 — the key is now `ailang:chat:{user_id}:{session_id}`.* It used to be
+  `ailang:chat:{session_id}` with `session_id` straight from the request body, so any logged-in
+  user could read another student's conversation by supplying their session id.
+  ⚠️ **The first attempt at this fix did nothing**: the `user_id` put into the key was the
+  token's subject, which was the same fixed value (`service@internal`) for every student.
+  Keying by 「the authenticated user」 only helps if the value actually varies per user.
 - 🔴 **The two servers must agree on what "logged out" means.** Spring checks the Redis
-  blacklist; FastAPI's `verify_token` checks signature and expiry only. Port `8001` is published
-  on the host, so a logged-out token still works against the AI server directly.
-- **Internal service calls are not user tokens.** `AiServerClient` mints an access token for the
-  fabricated subject `service@internal` using the same key and the same claims as a student's
-  token. A service identity needs its own claim, and the AI server should require it.
+  blacklist; FastAPI's `verify_token` checks signature, expiry and `typ` — **not the blacklist**.
+  ⚠️ Narrowed, not closed: a student's token is now rejected outright (wrong `typ`), and since
+  2026-09-15 port `8001` is bound to `127.0.0.1` rather than every interface. What remains is
+  Spring calling the AI server on behalf of a logged-out student — and Spring's own filter stops
+  that first.
+- **Internal service calls are not user tokens.** A service identity needs its own claim, and the
+  receiving server must require it. 🔄 *Fixed 2026-09-01 — tokens carry `typ`
+  (`ACCESS`/`REFRESH`/`SERVICE`) and FastAPI accepts `SERVICE` only.* Before that,
+  `AiServerClient` minted a token for the fabricated subject `service@internal` with the same key
+  and the same claims as a student's, so the two were indistinguishable.
 - **CORS and the OAuth redirect target are config, not literals.**
   🔄 *Fixed 2026-09-11.* Both now derive from a single key, `app.frontend.origin`
   (`APP_FRONTEND_ORIGIN`); the backend's own callback base is a **separate** key,
@@ -190,6 +216,20 @@ measured.
 ## Working rules
 
 - **One step at a time.** Don't implement several phases because they seem related.
+- 🔴 **Fetch first, and read the branches that are not merged yet.**
+  *Added 2026-09-15, after half an hour of work was thrown away.* A session started from a local
+  `main` four days stale. Three pull requests had landed in the meantime, one of them
+  (`12955e8`) doing **exactly** the config work the session then did again — and doing it better.
+  Seven files conflicted at merge time and every duplicated line was discarded.
+  ```
+  git fetch
+  git log --oneline origin/main -5
+  git branch -r --no-merged origin/main
+  ```
+  🔴 **Then open the diff of any unmerged branch whose name touches your task.** That session
+  *saw* `chore/config-externalize` in the branch list and skipped it. **A branch name is a
+  label, not a summary** — the work inside it is either already done or about to collide
+  with yours, and both are things you need to know before you start.
 - **One branch per piece of work — not per change.** Cut a task branch from the current work
   branch; never commit directly to `main`.
   🔄 *Sized 2026-09-11 by the user: branches were being cut far too fine — one of them carried
@@ -209,10 +249,25 @@ measured.
   Claude commits only when asked, **never pushes to `main`**, never force-pushes, and never
   opens or merges a pull request unless asked. A push publishes the work; if the branch is not
   actually finished, say so and don't push.
-- **Say what was verified and what was not, in the commit message.** This machine has neither a
-  JDK nor a running Docker, so a session may be unable to compile or run the tests it wrote.
+- **Say what was verified and what was not, in the commit message.**
   🔴 **An unverified change must be labelled unverified** — a green-looking commit that nobody
   built is the same failure mode as a stale document.
+  🔄 *Corrected 2026-09-15.* This rule used to assert, as a standing fact, that **"this machine
+  has neither a JDK nor a running Docker."* A session repeated that line without checking and
+  told the user to install a JDK **that was already there** — Gradle's toolchain keeps one under
+  `~/.gradle/jdks/`, off `PATH`; Docker was running with three containers up.
+  🔴 **Never state what this machine has or lacks from this file. Run the check.**
+  ```
+  ls ~/.gradle/jdks/            # toolchain JDKs Gradle already downloaded
+  docker ps                     # what is actually up
+  ```
+- 🔴 **"Fixed but unverified" is a claim, not a fact. Verify it before building on it.**
+  *Added 2026-09-15.* A commit dated 2026-09-11 said the concurrent-submission 500 was fixed and
+  the code carried a comment promising the student no longer sees it. **Both were false** — and
+  that same commit had honestly written *"the next person should read this as «claims to have
+  fixed it», not «it is fixed»."* Nobody did, for four days, until a test ran it for real.
+  When a doc, a comment, a commit or `TODOS.md` says *fixed, couldn't check*, that is **the
+  first thing to check**, not the thing to build on. Closing it is worth more than new work.
 - **Business logic is pure functions or entity methods** (grading, difficulty transitions,
   answer normalisation, LaTeX handling) so it can be tested without a DB or a network.
 - **Fix the source, not the symptom.** If a rule above names a defect, fixing that one call site
@@ -226,9 +281,16 @@ measured.
 number as unverified. That stopped being true on 2026-09-11.* **How many tests there are, and
 what they cover, lives in `TODOS.md` §5 — read it there, and don't copy the number here.**
 
-🔴 **What is covered is pure logic only** — answer normalisation, difficulty transitions, grade
-vocabulary. Everything that needs a DB or a network (submission under concurrency, loading, the
-AI hop) is still **unmeasured**, and a green test run says nothing about it.
+🔴 **Coverage is pure logic, plus two things that need a real DB.**
+🔄 *2026-09-15: submission under concurrency and the `SOURCE_ID` unique constraint are now
+measured — against a real Oracle, and the concurrency test found a live defect the moment it
+first ran.* **Loading and the AI hop are still unmeasured, and the FastAPI side has no tests at
+all**; a green run says nothing about them.
+
+- **A test that needs a DB skips loudly when there is none** (`Assumptions`), and **never
+  passes quietly**. Looking green without having run is worse than not running.
+- **Such a test creates its own student and deletes it afterwards.** Touching an existing
+  student's rows corrupts 정답률, and that corruption spreads into difficulty.
 
 - **A new test must fail against the old code.** If it passes both ways it pins nothing.
   🎯 In practice: name, in a comment, *the mutation this test catches*. If you cannot name one,
