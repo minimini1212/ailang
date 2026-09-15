@@ -16,4 +16,26 @@ public enum Grade {
     HIGH_1("고등 1학년");
 
     private final String displayName;
+
+    /**
+     * 바깥에서 들어온 문자열을 학년으로 바꾼다. <b>모르는 값이면 거절한다.</b>
+     *
+     * <p>🔴 {@code Grade.valueOf} 를 날것으로 부르지 않는다. 그것이 던지는
+     * {@code IllegalArgumentException} 을 받는 핸들러가 없어서, {@code ?grade=중1} 같은
+     * 요청이 <b>500 서버 내부 에러</b>로 나갔다 — 학생 입력이 원인인데 우리 잘못처럼 보인다.
+     *
+     * <p>🎯 순수 함수다. 새 어휘가 생기면 이 한 곳만 본다.
+     *
+     * @throws com.example.ailang.domain.user.exception.InvalidGradeException 모르는 값일 때
+     */
+    public static Grade from(String raw) {
+        if (raw == null || raw.isBlank()) {
+            throw new com.example.ailang.domain.user.exception.InvalidGradeException();
+        }
+        try {
+            return Grade.valueOf(raw.trim());
+        } catch (IllegalArgumentException e) {
+            throw new com.example.ailang.domain.user.exception.InvalidGradeException();
+        }
+    }
 }
