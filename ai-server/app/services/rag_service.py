@@ -33,6 +33,8 @@ class RagService:
         self.redis = aioredis.Redis(
             host=settings.redis_host,
             port=settings.redis_port,
+            # 비밀번호를 안 건 Redis 면 None 이고, 그때는 인증 없이 붙는다.
+            password=settings.redis_password,
             decode_responses=True,
         )
 

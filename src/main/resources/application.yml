@@ -12,10 +12,12 @@ spring:
     database-platform: org.hibernate.dialect.OracleDialect
     hibernate:
       ddl-auto: update
-    show-sql: true
+    # 🔴 운영에서 SQL 전문이 로그에 찍히면 학생 이메일·답안이 그대로 남는다.
+    #    개발할 때만 JPA_SHOW_SQL=true 로 켠다.
+    show-sql: ${JPA_SHOW_SQL:false}
     properties:
       hibernate:
-        format_sql: true
+        format_sql: ${JPA_SHOW_SQL:false}
 
   data:
     redis:
@@ -47,7 +49,7 @@ spring:
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_SECRET_KEY}
             scope: email, profile
-            redirect-uri: "http://localhost:8080/login/oauth2/code/google"
+            redirect-uri: "${APP_BACKEND_ORIGIN:http://localhost:8080}/login/oauth2/code/google"
         provider:
           google:
             authorization-uri: https://accounts.google.com/o/oauth2/v2/auth?prompt=select_account #매번 계정 선택 화면 표시
@@ -72,7 +74,19 @@ jwt:
   refresh-expiration: 604800000
 
 app:
+  # 🔴 프론트 주소가 두 곳에 문자열로 박혀 있었다 — SecurityConfig 의 CORS 허용 출처와
+  #    아래 로그인 후 돌아갈 주소. 한 곳만 고치면 CORS 는 새 주소를 열어 주는데
+  #    리다이렉트는 옛 주소로 보내는 식으로 어긋난다. 값을 «하나» 로 만든다.
+  #    쉼표로 여러 개를 줄 수 있다 — 첫 번째가 로그인 후 돌아갈 주소다.
+  frontend:
+    origin: ${APP_FRONTEND_ORIGIN:http://localhost:5173}
   oauth2:
-    redirect-uri: http://localhost:5173/oauth2/callback
+    redirect-uri: ${APP_FRONTEND_ORIGIN:http://localhost:5173}/oauth2/callback
   mail:
     verification-code-ttl: 300
+    # ⚠️ 이 세 값은 «사용자 결정 대기» 다 (TODOS.md 8절 「인증코드 잠금 횟수」).
+    #    결정 전까지 무제한으로 두지 않기 위한 잠정값이며, 코드가 아니라 여기 있으므로
+    #    정해지면 이 줄만 바꾸면 된다.
+    max-send-per-window: ${MAIL_MAX_SEND_PER_WINDOW:5}
+    send-window-seconds: ${MAIL_SEND_WINDOW_SECONDS:3600}
+    max-verify-attempts: ${MAIL_MAX_VERIFY_ATTEMPTS:5}
