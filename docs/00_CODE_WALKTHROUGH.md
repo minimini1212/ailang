@@ -1,6 +1,6 @@
 # 코드 개관 — 어디에 무엇이 있고, 왜 그 폴더가 있나
 
-> **최종 갱신: 2026-09-15** (오후: 검사 폴더 추가)
+> **최종 갱신: 2026-09-16** (검사 건수 정정)
 > 파일이 생기거나 역할이 바뀌면 이 문서를 **같은 커밋에서** 갱신한다 — 폴더 지도, 역할 설명,
 > 그리고 위의 「최종 갱신」 날짜까지. 낡은 지도는 없는 지도보다 나쁘다.
 
@@ -160,7 +160,7 @@ services/          🎯 프롬프트가 사는 자리
 | 파일 | 무엇 | 알아야 할 것 |
 | --- | --- | --- |
 | `global/config/SecurityConfig` | 경로별 인증 규칙·CORS | `GET /api/chapters` 만 열려 있다. 🔄 2026-09-15: `/api/admin/**` 를 **엔드포인트가 생기기 전에** `hasRole("ADMIN")` 으로 닫아 뒀다 — 없으면 관리자 API 를 처음 추가하는 순간 학생 전원에게 열린다. ✅ 검사 7건 |
-| `global/security/filter/JwtAuthenticationFilter` | 쿠키 토큰 검증 + 블랙리스트 | 🎯 토큰이 없으면 그냥 통과시킨다 — 거부는 `SecurityConfig` 몫. 🔴 **로그아웃의 유일한 근거가 이 안의 블랙리스트 확인 한 줄**이고, 그 줄이 AI 서버 쪽 로그아웃까지 대신 막는다. ✅ 검사 12건 |
+| `global/security/filter/JwtAuthenticationFilter` | 쿠키 토큰 검증 + 블랙리스트 | 🎯 토큰이 없으면 그냥 통과시킨다 — 거부는 `SecurityConfig` 몫. 🔴 **로그아웃의 유일한 근거가 이 안의 블랙리스트 확인 한 줄**이고, 그 줄이 AI 서버 쪽 로그아웃까지 대신 막는다. ✅ 검사 9건 |
 | `global/jwt/JwtTokenProvider` · `TokenType` | 토큰 발급·파싱·**종류 확인** | jjwt 0.11.2 (옛 API). 🔴 `typ` 클레임(ACCESS/REFRESH/SERVICE)이 쓰이는 자리마다 요구된다 |
 | `global/client/AiServerClient` | 🎯 **FastAPI 를 부르는 유일한 자리** | 서비스 토큰을 붙이고, AI 실패를 429·502·503 으로 보존한다. ✅ 검사 14건 — 실패 종류·신분·**나가는 몸통에 개인정보가 없는지**까지 본다 (2026-09-15) |
 | `ai-server/app/services/auth_service.py` | 반대편 JWT 검증 | SERVICE 토큰만 받는다. ⚠️ Spring 의 로그아웃 블랙리스트는 여전히 모른다 |
@@ -171,7 +171,7 @@ services/          🎯 프롬프트가 사는 자리
 
 | 파일 | 무엇 | 알아야 할 것 |
 | --- | --- | --- |
-| `domain/user/enums/Grade` | 학년 어휘 + `from(String)` | 🔴 바깥 문자열은 **반드시** `from` 으로 받는다. `valueOf` 를 날것으로 부르면 학생 입력 실수가 500 으로 나간다. ✅ 검사 17건 |
+| `domain/user/enums/Grade` | 학년 어휘 + `from(String)` | 🔴 바깥 문자열은 **반드시** `from` 으로 받는다. `valueOf` 를 날것으로 부르면 학생 입력 실수가 500 으로 나간다. ✅ 검사 20건 |
 | `global/loader/DataLoader` | 기출 JSON → DB | 🔴 경로가 틀려도 **경고만** 남기고 문제 0건으로 뜬다. ⚠️ 가드가 「기출이 한 건이라도 있으면 통째로 건너뛴다」라 **절반만 들어간 상태를 채울 수 없다** |
 | `global/exception/GlobalExceptionHandler` | 전역 예외 → 응답 | ⚠️ 마지막 `RuntimeException` 분기가 넓다. AI 실패는 `AiServerClient` 가 먼저 분류해 빠져나간다 |
 | `global/response/ResponseDTO` | 공통 봉투 | `code` 는 HTTP 상태와 같은 값이다 |
