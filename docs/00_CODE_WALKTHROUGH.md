@@ -1,6 +1,6 @@
 # 코드 개관 — 어디에 무엇이 있고, 왜 그 폴더가 있나
 
-> **최종 갱신: 2026-09-15**
+> **최종 갱신: 2026-09-15** (오후: 검사 폴더 추가)
 > 파일이 생기거나 역할이 바뀌면 이 문서를 **같은 커밋에서** 갱신한다 — 폴더 지도, 역할 설명,
 > 그리고 위의 「최종 갱신」 날짜까지. 낡은 지도는 없는 지도보다 나쁘다.
 
@@ -162,7 +162,7 @@ services/          🎯 프롬프트가 사는 자리
 | `global/config/SecurityConfig` | 경로별 인증 규칙·CORS | 🔴 **역할(ADMIN) 규칙이 하나도 없다.** `GET /api/chapters` 만 열려 있다. 🔄 2026-09-11: CORS 허용 출처가 `app.frontend.origin` 설정값이 됐다 (종전 리터럴) |
 | `global/security/filter/JwtAuthenticationFilter` | 쿠키 토큰 검증 + 블랙리스트 | 🎯 토큰이 없으면 그냥 통과시킨다 — 거부는 `SecurityConfig` 몫 |
 | `global/jwt/JwtTokenProvider` · `TokenType` | 토큰 발급·파싱·**종류 확인** | jjwt 0.11.2 (옛 API). 🔴 `typ` 클레임(ACCESS/REFRESH/SERVICE)이 쓰이는 자리마다 요구된다 |
-| `global/client/AiServerClient` | 🎯 **FastAPI 를 부르는 유일한 자리** | 서비스 토큰을 붙이고, AI 실패를 429·502·503 으로 보존한다 |
+| `global/client/AiServerClient` | 🎯 **FastAPI 를 부르는 유일한 자리** | 서비스 토큰을 붙이고, AI 실패를 429·502·503 으로 보존한다. ✅ 검사 14건 — 실패 종류·신분·**나가는 몸통에 개인정보가 없는지**까지 본다 (2026-09-15) |
 | `ai-server/app/services/auth_service.py` | 반대편 JWT 검증 | SERVICE 토큰만 받는다. ⚠️ Spring 의 로그아웃 블랙리스트는 여전히 모른다 |
 | `domain/auth/service/EmailVerificationServiceImpl` | 인증 메일 발송·코드 확인 | 🔴 **순서가 규칙이다** — 상한 확인은 메일 발송보다도 앞, 횟수 세기는 코드 대조보다도 앞. 뒤로 옮기면 상한이 무력해진다 |
 | `domain/auth/service/AttemptLimit` | 「몇 번까지 허용하나」 판정 (순수 함수) | 🎯 경계에서 한 칸 틀리기 쉬워서 따로 뺐다 — 세는 값이 «올린 뒤» 라 5회 허용은 `> 5` 다. ✅ 검사 4건 |

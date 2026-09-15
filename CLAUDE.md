@@ -284,8 +284,13 @@ what they cover, lives in `TODOS.md` §5 — read it there, and don't copy the n
 🔴 **Coverage is pure logic, plus two things that need a real DB.**
 🔄 *2026-09-15: submission under concurrency and the `SOURCE_ID` unique constraint are now
 measured — against a real Oracle, and the concurrency test found a live defect the moment it
-first ran.* **Loading and the AI hop are still unmeasured, and the FastAPI side has no tests at
-all**; a green run says nothing about them.
+first ran. 2026-09-15 (later the same day): the FastAPI side went from **0 tests to 78**, and the
+AI hop is covered on both sides with the client stubbed.* **Loading is still unmeasured and the
+frontend has no tests at all**; a green run says nothing about those.
+
+- 🔴 **The AI hop is covered as a «contract», not as a model.** Both sides stub the client. What
+  a real model actually returns is still unmeasured — deliberately, because a test that calls a
+  live model is forbidden. Do not read these tests as "the AI works".
 
 - **A test that needs a DB skips loudly when there is none** (`Assumptions`), and **never
   passes quietly**. Looking green without having run is worse than not running.

@@ -211,6 +211,8 @@ def _parse_json_object(content: str) -> dict:
 _OPTIONS_MAX = 1000
 _ANSWER_MAX = 200
 _REQUIRED = ("question", "problem_type", "answer", "explanation")
+# 객관식 정답으로 인정하는 값. 🔴 문자열이 아니라 «튜플» 이어야 한다 — 아래 _validate 주석 참고.
+_CHOICE_NUMBERS = ("1", "2", "3", "4")
 
 
 def _normalize(data: dict) -> None:
@@ -244,5 +246,9 @@ def _validate(data: dict) -> None:
     if len(str(data["answer"])) > _ANSWER_MAX:
         raise LlmBadResponseException(f"정답이 {_ANSWER_MAX}자를 넘습니다.")
 
-    if data["problem_type"] == "MULTIPLE_CHOICE" and str(data["answer"]).strip() not in "1234":
+    # 🔴 «부분 문자열» 검사를 쓰지 않는다. 2026-09-15 까지 이 줄은 not in "1234" 였고,
+    #    그래서 "12" · "123" · "1234" 가 전부 통과했다 — 보기가 4개인데 정답이 "12" 인
+    #    문제가 저장되고, 학생은 무엇을 골라도 오답이 된다. 공백만 있는 값도 통과했다
+    #    ("".strip() 은 어떤 문자열에나 들어 있다).
+    if data["problem_type"] == "MULTIPLE_CHOICE" and str(data["answer"]).strip() not in _CHOICE_NUMBERS:
         raise LlmBadResponseException(f"객관식 정답이 보기 번호가 아닙니다: {data['answer']!r}")
