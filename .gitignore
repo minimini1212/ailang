@@ -38,3 +38,12 @@ out/
 
 ### Environment variables ###
 .env
+
+### Python (ai-server) ###
+# 🔴 가상환경은 커밋하지 않는다. 125MB 이고 OS·파이썬 판마다 내용이 다르다.
+#    만드는 법은 ai-server/requirements-dev.txt 맨 위에 적어 뒀다.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/

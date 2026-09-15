@@ -1,0 +1,21 @@
+# 검사를 돌릴 때만 필요한 것. 운영 이미지에는 안 들어간다 (Dockerfile 은 requirements.txt 만 읽는다).
+#
+# ── 돌리는 법 ────────────────────────────────────────────────────────────────
+#   cd ai-server
+#   python -m venv .venv
+#   .venv/Scripts/python -m pip install -r requirements.txt -r requirements-dev.txt   # Windows
+#   .venv/bin/python     -m pip install -r requirements.txt -r requirements-dev.txt   # macOS·Linux
+#   .venv/Scripts/python -m pytest
+#
+# ── 🔴 파이썬 3.11 로 만들 것 ────────────────────────────────────────────────
+#   2026-09-15 실측: 3.13 에서는 `pip install -r requirements.txt` 가 **실패한다.**
+#   langchain 0.3.0 이 끌고 오는 numpy 판이 3.13 용 휠을 안 내놓아 소스 빌드로 넘어가고,
+#   그 빌드가 깨진다. 운영 이미지는 python:3.11-slim 이라 컨테이너에서는 안 보이는 문제다.
+#   ⚠️ 3.13 밖에 없다면, 검사가 실제로 쓰는 것만 골라 넣어도 전부 돈다:
+#        langchain-core langchain-openai pydantic-settings fastapi httpx redis
+#        python-jose[cryptography] pytest pytest-asyncio
+#      (langchain 우산 패키지와 uvicorn 은 검사에 필요 없다)
+
+pytest==8.3.3
+# 비동기 검사용. pytest.ini 의 asyncio_mode=auto 와 짝이다.
+pytest-asyncio==0.24.0
