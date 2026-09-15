@@ -18,7 +18,7 @@
 
 | 문서 | 무엇을 넘겼나 |
 | --- | --- |
-| [HANDOFF_2026-09-11_chapter-reload-and-screens.md](HANDOFF_2026-09-11_chapter-reload-and-screens.md) | 챕터 재적재(대단원 8개)와 맞춤 문제 화면. ~~프론트가 git 저장소가 아니다~~ 🔄 **§1 은 2026-09-11 에 해결**(별도 저장소로 올렸다) · 학년 고치는 길이 없다 · 정답 200자 초과 20건 |
+| [HANDOFF_2026-09-11_chapter-reload-and-screens.md](HANDOFF_2026-09-11_chapter-reload-and-screens.md) | 챕터 재적재(대단원 8개)와 맞춤 문제 화면. 🔴 **§1 은 아직 «절반만» 닫혔다** — 2026-09-15 실측: 프론트는 git 저장소가 되긴 했지만 **원격이 없다**(`.git/config` 에 `[remote]` 없음, 커밋 2개). 즉 **백업은 여전히 0** 이고 컴퓨터 한 대에만 있다 → [`../../TODOS.md`](../../TODOS.md) 2절 · 학년 고치는 길이 없다 → ✅ 2026-09-11 · 정답 200자 초과 20건 → 그대로 |
 
 ### 인계 문서(HANDOFF)는 언제 쓰나
 
