@@ -57,6 +57,15 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**", "/oauth2/**", "/login/oauth2/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/chapters").permitAll()
+                // 🔴 관리자 경로는 «만들기 전에» 닫아 둔다.
+                //    지금 /api/admin/** 엔드포인트는 하나도 없다. 그래서 이 줄은 오늘
+                //    아무것도 막지 않는다 — 막는 것은 «내일» 이다. 이 줄이 없으면 누군가
+                //    관리자 API 를 처음 추가하는 순간 anyRequest().authenticated() 에 걸려
+                //    «로그인한 학생 전원» 에게 열린다. 그때 그 사람이 규칙을 같이 넣는 것을
+                //    기억해야 하는데, 기억에 기대는 보호는 결국 한 번은 실패한다.
+                //    ⚠️ 권한 문자열은 CustomUserDetails 가 user.getRole().name() 으로 만든다
+                //       (ROLE_ADMIN). hasRole 은 ROLE_ 을 스스로 붙이므로 여기선 ADMIN 이다.
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
             .oauth2Login(oauth2 -> oauth2

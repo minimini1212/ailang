@@ -9,6 +9,11 @@ import org.springframework.http.HttpStatus;
 public enum ErrorCode {
 
     USER_NOT_FOUND(HttpStatus.BAD_REQUEST, "존재하지 않는 회원입니다."),
+    /* 🔴 「로그인이 안 됐다」와 「토큰이 이상하다」는 다른 상태다. 앞은 로그인하면 되고,
+       뒤는 무언가 잘못된 것이다. 뭉개면 학생이 무엇을 해야 할지 알 수 없다. */
+    LOGIN_REQUIRED(HttpStatus.UNAUTHORIZED, "로그인이 필요한 요청입니다."),
+    /* 어휘 밖의 학년. 🔴 기본값으로 접지 않는다 — 엉뚱한 학년의 문제를 주는 것보다 거절이 낫다. */
+    INVALID_GRADE(HttpStatus.BAD_REQUEST, "학년 값이 올바르지 않습니다. (ELEM_3 ~ HIGH_1)"),
     USER_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 가입된 이메일입니다."),
 
     EMAIL_NOT_VERIFIED(HttpStatus.BAD_REQUEST, "이메일 인증이 필요합니다."),
