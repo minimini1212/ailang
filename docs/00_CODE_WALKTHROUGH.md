@@ -68,7 +68,7 @@ GET /api/problems/adaptive?chapterId=1
 ```
 POST /api/problems/42/submit
    │
-   ├─ 객관식이면  → AnswerNormalizer 로 표기를 맞춰 비교      (서버가 채점)
+   ├─ 객관식이면  → AnswerNormalizer.matchesChoice 로 비교    (서버가 채점)
    │  단답형이면  → request.selfJudge          (⚠️ 없으면 400, 오답 아님)
    │
    ├─ 문제가 그 챕터에 속하나?                  아니면 400
@@ -154,7 +154,7 @@ services/          🎯 프롬프트가 사는 자리
 | `domain/problem/enums/Difficulty` | `upgrade()` / `downgrade()` | 양 끝(LOW·HIGH)에서 제자리. ✅ 검사가 붙어 있다 (2026-09-11) |
 | `domain/problem/service/AiProblemStore` | AI 문제의 DB 작업만 | 🎯 트랜잭션을 AI 호출 앞뒤로 짧게 나누려고 뗀 별도 빈 |
 | `domain/problem/service/UserChapterStatsCreator` | 통계 행을 **만드는** 일만 | 🎯 별도 트랜잭션(`REQUIRES_NEW`) 이어야 하는 것이 존재 이유다. 🔴 **아무것도 삼키지 않는다** — 제약 위반은 그대로 던지고 «부르는 쪽» 이 잡는다. 안에서 잡았다가 커밋 때 다시 터진 적이 있다 (2026-09-15, 규칙 R10-1) |
-| `domain/problem/service/AnswerNormalizer` | 정답 표기 맞추기 (순수 함수) | ✅ **검사가 붙어 있다** (건수는 `TODOS.md` §5). 🔴 모르는 표기는 지우지 않는다 — 지우면 다른 답이 같아진다 |
+| `domain/problem/service/AnswerNormalizer` | 정답 표기 맞추기 (순수 함수) | ✅ **검사가 붙어 있다** (건수는 `TODOS.md` §5). 🔴 모르는 표기는 지우지 않는다 — 지우면 다른 답이 같아진다. 🔄 2026-09-16: `stripChoiceNoise`·`matchesChoice` 를 더했다 — **객관식 정답 칸의 자료 잡음**(`(해답)③`·`(5)`) 전용이고, 일반 `normalize` 에는 넣지 않았다. 단답형을 서버 채점으로 옮기면 `(5)` 같은 답을 뭉개기 때문이다 |
 | `domain/problem/repository/ProblemRepository` | 네이티브 쿼리 5개 | 🔴 전부 `SOURCE_TYPE = 'REAL'` 을 손으로 적는다. 새 쿼리에서 빠지면 조용히 섞인다 |
 
 ### 🔒 경계와 관문
@@ -214,10 +214,10 @@ services/          🎯 프롬프트가 사는 자리
 cp .env.example .env          # 값은 직접 채운다
 docker compose up -d          # Oracle · Redis · FastAPI
 ./gradlew bootRun             # Spring (compose 에 없다 — 따로 띄운다)
-./gradlew test                # 🔄 검사 123건 (2026-09-16 실측)
+./gradlew test                # 🔄 검사 130건 (2026-09-16 실측)
 ```
 
-🔄 **123건 중 11건은 Oracle·Redis 가 떠 있어야 한다** — `AilangApplicationTests`(컨텍스트
+🔄 **130건 중 11건은 Oracle·Redis 가 떠 있어야 한다** — `AilangApplicationTests`(컨텍스트
 로딩) · `SubmitAnswerConcurrencyTest` · `SecurityConfigTest` · `SourceIdUniqueTest`.
 나머지 112건은 인프라 없이 돈다.
 ⚠️ **건수는 이 문서에서 옮겨 적지 말고 결과 파일을 집계할 것** — 이 줄은 2026-09-16 까지

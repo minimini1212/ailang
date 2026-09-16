@@ -221,8 +221,10 @@ public class ProblemServiceImpl implements ProblemService {
             }
             return request.getSelfJudge();
         }
-        // 객관식: 서버가 채점한다
-        return AnswerNormalizer.matches(problem.getAnswer(), request.getUserAnswer());
+        // 객관식: 서버가 채점한다.
+        // 🔄 2026-09-16: matches 가 아니라 matchesChoice 다. 정답 칸에 「(해답)③」·「(5)」
+        //    처럼 자료 잡음이 섞인 건이 14건 있었고, 그동안 «무엇을 골라도 오답» 이었다.
+        return AnswerNormalizer.matchesChoice(problem.getAnswer(), request.getUserAnswer());
     }
 
     @Override

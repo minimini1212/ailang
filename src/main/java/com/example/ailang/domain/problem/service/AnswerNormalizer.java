@@ -63,6 +63,55 @@ public final class AnswerNormalizer {
     }
 
     /**
+     * 객관식 정답 칸에 섞여 들어온 <b>자료 잡음</b>을 걷어낸다.
+     *
+     * <p>🔴 <b>왜 {@link #normalize} 와 따로 두나.</b> 여기서 하는 일은 「표기 차이」가
+     * 아니라 「자료가 더러운 것」이고, <b>객관식에서만 참이다</b>. 단답형 채점을 서버로
+     * 되돌릴지는 아직 열린 결정인데, 그때 {@code (5)} 를 {@code 5} 로 벗기면
+     * <b>순서쌍이나 괄호가 뜻을 가지는 답을 뭉갠다.</b> 그래서 일반 정규화에 안 넣는다.
+     *
+     * <p>2026-09-16 에 DB 의 객관식 500건을 전부 꺼내 세어 보고 만든 것이다.
+     * 정답 칸이 보기 번호가 아닌 것이 <b>70건</b>이었고, 그중 이 함수가 걷어내는 것은
+     * 아래 두 모양 <b>14건</b>이다. 나머지 56건은 사람 판단이 필요하다
+     * ({@code docs/reports/daily/REPORT_2026-09-16.md} §10).
+     *
+     * <pre>
+     *   (해답)③  →  3     7건.  「(해답)」 은 원본 해설의 머리말이 딸려 온 것이다
+     *   (5)      →  5     7건.  괄호로 싼 보기 번호. 본문 보기가 ①~⑤ 다섯 개인 것을 확인했다
+     * </pre>
+     *
+     * <p>🎯 <b>둘 다 「통째로 그 모양일 때만」 걷어낸다.</b> 문자열 «안에» 있는 괄호는
+     * 건드리지 않는다 — {@code \left(-\frac{1}{3}\right)} 같은 수식이 정답 칸에 통째로
+     * 들어온 건도 있는데, 거기서 괄호를 벗기면 <b>다른 수가 된다.</b>
+     *
+     * @param normalized {@link #normalize} 를 이미 거친 문자열
+     */
+    static String stripChoiceNoise(String normalized) {
+        if (normalized == null) {
+            return "";
+        }
+        // 「(해답)3」·「[해답]3」 처럼 머리말이 붙은 것만. 뒤에 보기 번호 하나만 남아야 한다.
+        String s = normalized.replaceFirst("^[\\(\\[]?해답[\\)\\]]?(?=[1-5]$)", "");
+        // 「(5)」 처럼 통째로 괄호에 싸인 보기 번호만.
+        s = s.replaceFirst("^\\(([1-5])\\)$", "$1");
+        return s;
+    }
+
+    /**
+     * 객관식 채점용 비교. <b>자료 잡음을 걷어낸 뒤</b> 비교한다.
+     *
+     * <p>⚠️ 단답형에는 쓰지 않는다 — {@link #stripChoiceNoise} 주석 참고.
+     */
+    public static boolean matchesChoice(String storedAnswer, String userAnswer) {
+        String a = stripChoiceNoise(normalize(storedAnswer));
+        String b = stripChoiceNoise(normalize(userAnswer));
+        if (!isComparable(a) || !isComparable(b)) {
+            return false;
+        }
+        return a.equalsIgnoreCase(b);
+    }
+
+    /**
      * 이 정규화 결과로 채점해도 되는가.
      *
      * <p>🔴 비어 있으면 안 된다. 실제 정답 중 {@code "$"} 와 {@code "$\bigcirc$"} 는
