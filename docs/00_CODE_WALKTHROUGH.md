@@ -214,8 +214,14 @@ services/          🎯 프롬프트가 사는 자리
 cp .env.example .env          # 값은 직접 채운다
 docker compose up -d          # Oracle · Redis · FastAPI
 ./gradlew bootRun             # Spring (compose 에 없다 — 따로 띄운다)
-./gradlew test                # 🎯 인프라 없이 도는 검사 15건 + 컨텍스트 로딩 1건
+./gradlew test                # 🔄 검사 123건 (2026-09-16 실측)
 ```
+
+🔄 **123건 중 11건은 Oracle·Redis 가 떠 있어야 한다** — `AilangApplicationTests`(컨텍스트
+로딩) · `SubmitAnswerConcurrencyTest` · `SecurityConfigTest` · `SourceIdUniqueTest`.
+나머지 112건은 인프라 없이 돈다.
+⚠️ **건수는 이 문서에서 옮겨 적지 말고 결과 파일을 집계할 것** — 이 줄은 2026-09-16 까지
+「15건」으로 적혀 있었다.
 
 🔴 **기동 로그에서 `[DataLoader] 적재 완료 - 삽입: N개` 의 N 을 확인할 것.**
 경로가 틀리면 에러 없이 0건으로 뜬다.
