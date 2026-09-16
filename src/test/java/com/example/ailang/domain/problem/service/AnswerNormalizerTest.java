@@ -196,4 +196,91 @@ class AnswerNormalizerTest {
             assertThat(AnswerNormalizer.matches("$\\frac{1}{2^{3}}$", "1/2^3")).isTrue();
         }
     }
+
+    /**
+     * 🔴 객관식 정답 칸의 <b>자료 잡음</b>.
+     *
+     * <p>2026-09-16 에 DB 의 객관식 500건을 전부 꺼내 세었다. 정답 칸이 보기 번호가
+     * 아닌 것이 <b>70건</b>이었고 — 그 문제들은 <b>학생이 무엇을 골라도 오답</b>이었다 —
+     * 그중 아래 두 모양 <b>14건</b>은 사람 판단 없이 걷어낼 수 있다.
+     *
+     * <p>⚠️ 종전 기록은 이것을 「14건」으로 적어 뒀는데 그건 <b>자릿수로 갈랐기 때문</b>이다
+     * (「12자 초과 14건」). 12자 이하여도 보기 번호가 아니면 똑같이 못 맞힌다.
+     */
+    @Nested
+    @DisplayName("🔴 객관식 정답 칸의 자료 잡음을 걷어낸다")
+    class StripsChoiceNoise {
+
+        @Test
+        @DisplayName("「(해답)③」 은 ③ 이다 — DB 에 7건 있다")
+        void solutionPrefix() {
+            assertThat(AnswerNormalizer.matchesChoice("(해답)③", "3")).isTrue();
+            assertThat(AnswerNormalizer.matchesChoice("(해답)①", "1")).isTrue();
+        }
+
+        @Test
+        @DisplayName("괄호로 싼 「(5)」 는 보기 5번이다 — DB 에 7건 있다")
+        void parenthesizedChoice() {
+            // 본문 보기가 ①~⑤ 다섯 개인 것을 확인하고 넣은 규칙이다.
+            // 477/500 이 5지선다고, 이 7건도 전부 5지선다였다.
+            assertThat(AnswerNormalizer.matchesChoice("(5)", "5")).isTrue();
+            assertThat(AnswerNormalizer.matchesChoice("(3)", "3")).isTrue();
+        }
+
+        @Test
+        @DisplayName("🎯 잡음이 없던 답은 그대로 맞는다")
+        void plainAnswersStillMatch() {
+            // 430건이 이쪽이다. 규칙을 넓히면서 이 길을 망가뜨리면 안 된다.
+            assertThat(AnswerNormalizer.matchesChoice("①", "1")).isTrue();
+            assertThat(AnswerNormalizer.matchesChoice("$ ④ $", "4")).isTrue();
+        }
+    }
+
+    /**
+     * 🔴 <b>걷어내면 안 되는 것.</b> 이 묶음이 「넓히다가 틀리게 맞히는」 쪽을 막는다.
+     *
+     * <p>이 파일 맨 위 묶음(「지우면 안 되는 것」)과 같은 취지다 —
+     * <b>못 맞히는 쪽이 틀리게 맞히는 쪽보다 낫다.</b>
+     */
+    @Nested
+    @DisplayName("🔴 괄호를 «아무 데서나» 벗기지 않는다")
+    class DoesNotOverStrip {
+
+        @Test
+        @DisplayName("수식 «안» 의 괄호는 그대로 둔다")
+        void keepsParenthesesInsideExpressions() {
+            // 정답 칸에 풀이가 통째로 들어온 건이 12건 있다. 거기서 괄호를 벗기면
+            // 🔴 다른 수가 된다. 「통째로 (N) 일 때만」 벗기는 이유다.
+            assertThat(AnswerNormalizer.matchesChoice("$a-\\left(-\\frac{1}{3}\\right)$", "1"))
+                    .isFalse();
+        }
+
+        @Test
+        @DisplayName("보기 번호가 아닌 괄호 숫자는 안 벗긴다")
+        void onlyChoiceRange() {
+            // (7) 은 보기 번호일 수 없다 — 보기는 다섯 개까지다.
+            assertThat(AnswerNormalizer.matchesChoice("(7)", "7")).isFalse();
+            assertThat(AnswerNormalizer.matchesChoice("(12)", "12")).isFalse();
+        }
+
+        @Test
+        @DisplayName("🔴 복수정답은 «여전히» 안 맞는다 — 고친 척하면 안 된다")
+        void multipleAnswersStillUnmatched() {
+            // DB 에 36건 있다. 이건 자료 잡음이 아니라 «문제의 성격» 이라
+            // 화면이 둘을 고를 수 있어야 하고, 채점도 집합 비교여야 한다.
+            // 🎯 여기서 ①,③ 을 1 로 뭉개면 「①만 골라도 정답」이 되어 더 나쁘다.
+            assertThat(AnswerNormalizer.matchesChoice("①, ③", "1")).isFalse();
+            assertThat(AnswerNormalizer.matchesChoice("①, ③", "3")).isFalse();
+        }
+
+        @Test
+        @DisplayName("🎯 「해답」 뒤에 보기 번호 «하나» 가 아니면 «안 걷어낸다»")
+        void prefixOnlyBeforeSingleChoiceNumber() {
+            // 🔴 DB 의 7건은 «전부» 「(해답)」 + 원문자 하나였다. 그 밖의 모양은
+            //    본 적이 없으므로 규칙을 넓히지 않는다 — 못 맞히는 쪽이 틀리게
+            //    맞히는 쪽보다 낫다(이 파일 맨 위 묶음과 같은 취지).
+            assertThat(AnswerNormalizer.matchesChoice("(해답)12", "12")).isFalse();
+            assertThat(AnswerNormalizer.matchesChoice("(해답)12", "1")).isFalse();
+        }
+    }
 }
